@@ -21,7 +21,7 @@ public sealed class VersusMatchTests
         var injectedCount = 0;
         using var match = CreateMatch(
             economy,
-            (key, count) =>
+            (key, count, _) =>
             {
                 injectedKey = key;
                 injectedCount = count;
