@@ -226,6 +226,17 @@ public sealed class VersusMatch : IDisposable
         }
     }
 
+    public void OnRivalSnap(RivalSnapMsg snapshot)
+    {
+        if (!IsActive ||
+            !_peers.TryGetValue(snapshot.PeerId, out var peer) ||
+            snapshot.PeerId == _localPeerId ||
+            float.IsNaN(snapshot.StrongholdHp01))
+            return;
+
+        peer.StrongholdHp01 = Math.Max(0f, Math.Min(1f, snapshot.StrongholdHp01));
+    }
+
     public void Dispose()
     {
         if (!_eventsAttached)

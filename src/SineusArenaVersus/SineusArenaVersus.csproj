@@ -32,7 +32,15 @@
     </Reference>
   </ItemGroup>
   <ItemGroup>
+    <PackageReference Include="Facepunch.Steamworks" Version="2.3.3"
+                      GeneratePathProperty="true"
+                      PrivateAssets="all" />
     <PackageReference Include="System.Text.Json" Version="8.0.5" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="$(PkgFacepunch_Steamworks)\content\steam_api64.dll"
+          Link="steam_api64.dll"
+          CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
   <ItemGroup>
     <EmbeddedResource Include="Catalog\catalog.json" />
@@ -44,6 +52,12 @@
   </ItemGroup>
   <Target Name="CopyToProfile" AfterTargets="Build">
     <MakeDir Directories="$(BepInExProfile)\BepInEx\plugins\Fowks-SineusArenaVersus" />
-    <Copy SourceFiles="$(TargetPath)" DestinationFolder="$(BepInExProfile)\BepInEx\plugins\Fowks-SineusArenaVersus" />
+    <Copy SourceFiles="$(TargetPath);@(ReferenceCopyLocalPaths)"
+          DestinationFolder="$(BepInExProfile)\BepInEx\plugins\Fowks-SineusArenaVersus"
+          SkipUnchangedFiles="true" />
+    <Copy SourceFiles="$(TargetDir)steam_api64.dll"
+          DestinationFolder="$(BepInExProfile)\BepInEx\plugins\Fowks-SineusArenaVersus"
+          SkipUnchangedFiles="true"
+          Condition="Exists('$(TargetDir)steam_api64.dll')" />
   </Target>
 </Project>

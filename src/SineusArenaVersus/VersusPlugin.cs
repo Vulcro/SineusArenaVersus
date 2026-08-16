@@ -4,7 +4,10 @@ using HarmonyLib;
 using SineusArenaVersus.Catalog;
 using SineusArenaVersus.Economy;
 using SineusArenaVersus.Game;
+using SineusArenaVersus.Lobby;
 using SineusArenaVersus.Match;
+using SineusArenaVersus.Net;
+using SineusArenaVersus.Steam;
 using UnityEngine;
 
 namespace SineusArenaVersus;
@@ -19,8 +22,12 @@ public sealed class VersusPlugin : BaseUnityPlugin
     internal static VersusPlugin Instance { get; private set; } = null!;
     internal static ManualLogSource Log => Instance.Logger;
     internal static VersusMatch? ActiveMatch { get; set; }
+    internal static VersusLobby? ActiveLobby { get; private set; }
 
     private Harmony? _harmony;
+    private SteamBootstrap? _steam;
+    private SteamP2PTransport? _transport;
+    private VersusNet? _net;
 
     private void Awake()
     {
@@ -28,6 +35,21 @@ public sealed class VersusPlugin : BaseUnityPlugin
         VersusConfig.Bind(Config);
         _harmony = new Harmony(PluginGuid);
         _harmony.PatchAll();
+        _steam = new SteamBootstrap(exception => Logger.LogError($"Steam error: {exception}"));
+        if (_steam.Initialize())
+        {
+            ActiveLobby = new VersusLobby(
+                () => VersusConfig.MaxPlayers.Value,
+                () => VersusConfig.WaveIntervalSeconds.Value,
+                () => _net);
+            ActiveLobby.SessionChanged += BindSteamSession;
+            ActiveLobby.LobbyError += exception => Logger.LogError($"Lobby error: {exception}");
+        }
+        else
+        {
+            Logger.LogWarning("Steam unavailable; Friends Versus is disabled.");
+        }
+
         if (VersusConfig.DebugOfflineVersus.Value)
             StartOfflineMatch();
         Logger.LogInfo($"{PluginName} {PluginVersion} loaded");
@@ -35,12 +57,21 @@ public sealed class VersusPlugin : BaseUnityPlugin
 
     private void OnDestroy()
     {
+        _net?.Dispose();
+        _transport?.Dispose();
+        ActiveLobby?.Dispose();
         ActiveMatch?.Dispose();
+        _steam?.Dispose();
+        ActiveLobby = null;
+        ActiveMatch = null;
         _harmony?.UnpatchSelf();
     }
 
     private void Update()
     {
+        _steam?.RunCallbacks();
+        _net?.Pump(Time.deltaTime);
+
         if (ActiveMatch?.IsActive == true)
             ActiveMatch.Tick(Time.deltaTime);
 
@@ -76,5 +107,40 @@ public sealed class VersusPlugin : BaseUnityPlugin
         match.QueueSendRequested += match.OnQueueSendValidated;
         match.StartMatch(new[] { localPeerId, rivalPeerId }, isHost: true);
         ActiveMatch = match;
+    }
+
+    private void BindSteamSession()
+    {
+        if (ActiveLobby is null || !ActiveLobby.HasLobby)
+            return;
+
+        _net?.Dispose();
+        _transport?.Dispose();
+        ActiveMatch?.Dispose();
+
+        var localPeerId = (ulong)Steamworks.SteamClient.SteamId;
+        var match = CreateMatch(localPeerId);
+        _transport = new SteamP2PTransport(ActiveLobby.ContainsPeer);
+        _net = new VersusNet(
+            match,
+            _transport,
+            ActiveLobby.HostPeerId,
+            () => new RivalSnapMsg(
+                localPeerId,
+                GameFacades.TryGetLocalKeepHp01(),
+                GameFacades.IsLocalKeepAlive()));
+        _net.PacketRejected += exception => Logger.LogWarning($"Rejected Versus packet: {exception.Message}");
+        ActiveMatch = match;
+    }
+
+    private static VersusMatch CreateMatch(ulong localPeerId)
+    {
+        var economy = new VersusEconomy(
+            VersusConfig.PassiveBase.Value,
+            VersusConfig.PassivePerSuccessfulSend.Value,
+            () => VersusConfig.VpTrash.Value,
+            () => VersusConfig.VpElite.Value,
+            () => VersusConfig.VpBoss.Value);
+        return new VersusMatch(localPeerId, economy, VersusCatalog.Load());
     }
 }
