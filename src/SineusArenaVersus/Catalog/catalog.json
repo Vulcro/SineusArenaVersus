@@ -1,1 +1,8 @@
-{"offerings":[]}
+{
+  "offerings": [
+    { "id": "swarm", "displayName": "Swarm", "cost": 10, "enemyKey": "trash", "count": 8 },
+    { "id": "fast_pack", "displayName": "Fast Pack", "cost": 18, "enemyKey": "fast", "count": 5 },
+    { "id": "elites", "displayName": "Elites", "cost": 35, "enemyKey": "elite", "count": 2 },
+    { "id": "mini_boss", "displayName": "Mini-Boss", "cost": 60, "enemyKey": "mini_boss", "count": 1 }
+  ]
+}
