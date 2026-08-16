@@ -90,6 +90,48 @@ public sealed class VersusNetTests
         Assert.Equal(0.4f, match.Peers[Host].StrongholdHp01);
     }
 
+    [Fact]
+    public void Client_waits_for_host_winner_opcode_after_stronghold_down()
+    {
+        using var match = CreateMatch(Client);
+        var transport = new FakeTransport(Client);
+        using var net = new VersusNet(match, transport, Host);
+        ulong? winner = null;
+        net.WinnerReceived += peer => winner = peer;
+        match.StartMatch(new[] { Host, Client }, isHost: false);
+
+        transport.Enqueue(
+            Host,
+            VersusSerializer.SerializePeer(VersusOpcode.StrongholdDown, new PeerMsg(Host)));
+        net.Pump(0f);
+
+        Assert.Null(winner);
+        transport.Enqueue(
+            Host,
+            VersusSerializer.SerializePeer(VersusOpcode.Winner, new PeerMsg(Client)));
+        net.Pump(0f);
+        Assert.Equal(Client, winner);
+    }
+
+    [Fact]
+    public void Host_relays_stronghold_down_before_broadcasting_winner()
+    {
+        using var match = CreateMatch(Host);
+        var transport = new FakeTransport(Host);
+        using var net = new VersusNet(match, transport, Host);
+        match.StartMatch(new[] { Host, Client }, isHost: true);
+        transport.Enqueue(
+            Client,
+            VersusSerializer.SerializePeer(VersusOpcode.StrongholdDown, new PeerMsg(Client)));
+
+        net.Pump(0f);
+
+        Assert.Collection(
+            transport.Sent,
+            sent => AssertSend(sent, Client, VersusOpcode.StrongholdDown, reliable: true),
+            sent => AssertSend(sent, Client, VersusOpcode.Winner, reliable: true));
+    }
+
     private static void AssertSend(SentPacket sent, ulong peer, VersusOpcode opcode, bool reliable)
     {
         Assert.Equal(peer, sent.PeerId);

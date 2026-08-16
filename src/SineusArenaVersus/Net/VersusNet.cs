@@ -195,8 +195,10 @@ public sealed class VersusNet : IDisposable
         {
             if (message.PeerId != packet.SenderId)
                 throw new InvalidDataException("Eliminated peer does not match packet sender.");
-            _match.OnStrongholdDown(message.PeerId);
+            if (!_match.Peers.TryGetValue(message.PeerId, out var peer) || !peer.IsAlive)
+                return;
             Broadcast(VersusOpcode.StrongholdDown, packet.Payload);
+            _match.OnStrongholdDown(message.PeerId);
             return;
         }
 
@@ -262,10 +264,11 @@ public sealed class VersusNet : IDisposable
 
     private void HandleWinnerDetermined(ulong peer)
     {
-        if (IsHost)
-            Broadcast(VersusOpcode.Winner, VersusSerializer.SerializePeer(
-                VersusOpcode.Winner,
-                new PeerMsg(peer)));
+        if (!IsHost)
+            return;
+        Broadcast(VersusOpcode.Winner, VersusSerializer.SerializePeer(
+            VersusOpcode.Winner,
+            new PeerMsg(peer)));
         WinnerReceived?.Invoke(peer);
     }
 

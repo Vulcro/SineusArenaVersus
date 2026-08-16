@@ -120,6 +120,20 @@ public sealed class VersusMatchTests
     }
 
     [Fact]
+    public void Client_does_not_determine_winner_after_stronghold_down()
+    {
+        using var match = CreateMatch(FundedEconomy());
+        ulong? winner = null;
+        match.WinnerDetermined += peer => winner = peer;
+        match.StartMatch(new[] { LocalPeer, RivalPeer }, isHost: false);
+
+        match.OnStrongholdDown(RivalPeer);
+
+        Assert.Null(winner);
+        Assert.Equal(VersusMatchState.InMatch, match.State);
+    }
+
+    [Fact]
     public void Host_tick_emits_and_applies_wave()
     {
         using var match = CreateMatch(FundedEconomy(), waveInterval: () => 2f);

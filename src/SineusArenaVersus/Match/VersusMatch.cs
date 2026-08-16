@@ -216,6 +216,8 @@ public sealed class VersusMatch : IDisposable
         peer.StrongholdHp01 = 0f;
         if (peerId == _localPeerId)
             State = VersusMatchState.Eliminated;
+        if (!_isHost)
+            return;
 
         var survivors = _peers.Values.Where(candidate => candidate.IsAlive).ToArray();
         if (survivors.Length == 1)
