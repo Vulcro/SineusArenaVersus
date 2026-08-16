@@ -3,6 +3,12 @@ using Xunit;
 
 namespace SineusArenaVersus.Tests;
 
+[CollectionDefinition(nameof(VersusLookGateCollection), DisableParallelization = true)]
+public sealed class VersusLookGateCollection
+{
+}
+
+[Collection(nameof(VersusLookGateCollection))]
 public sealed class VersusCameraLookGateTests
 {
     public VersusCameraLookGateTests()

@@ -14,5 +14,9 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\src\SineusArenaVersus\SineusArenaVersus.csproj" />
+    <Reference Include="UnityEngine.CoreModule">
+      <HintPath>$(GameDir)\SineusArena_Data\Managed\UnityEngine.CoreModule.dll</HintPath>
+      <Private>true</Private>
+    </Reference>
   </ItemGroup>
 </Project>

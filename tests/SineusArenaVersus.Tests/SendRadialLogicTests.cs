@@ -11,7 +11,7 @@ public sealed class SendRadialLogicTests
     {
         var living = new ulong[] { 10, 20, 30 };
         Assert.Equal(1, SendRadialLogic.CycleTarget(living, 0, +1));
-        Assert.Equal(0, SendRadialLogic.CycleTarget(living, 0, -1));
+        Assert.Equal(2, SendRadialLogic.CycleTarget(living, 0, -1));
         Assert.Equal(0, SendRadialLogic.CycleTarget(living, 2, +1));
     }
 

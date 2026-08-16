@@ -126,6 +126,16 @@ public sealed class VersusPlugin : BaseUnityPlugin
         if (ActiveMatch?.IsActive == true)
             ActiveMatch.Tick(Time.deltaTime);
 
+        if (ActiveMatch is not null &&
+            ActiveMatch.State is VersusMatchState.InMatch
+                or VersusMatchState.Eliminated
+                or VersusMatchState.Ended)
+        {
+            var frame = VersusInput.Poll();
+            _hud?.TickInput(frame);
+            VersusCameraLookGate.Tick();
+        }
+
         if (!VersusConfig.DebugForceInject.Value ||
             !System.Enum.TryParse(VersusConfig.DebugInjectKey.Value, true, out KeyCode key) ||
             !Input.GetKeyDown(key))

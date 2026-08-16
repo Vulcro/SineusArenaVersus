@@ -12,11 +12,10 @@ public static class SendRadialLogic
         var index = currentIndex;
         if (index < 0 || index >= living.Count)
             index = 0;
-        var next = index + delta;
-        if (next >= living.Count)
-            next %= living.Count;
-        else if (next < 0)
-            next = 0;
+        var count = living.Count;
+        var next = (index + delta) % count;
+        if (next < 0)
+            next += count;
         return next;
     }
 

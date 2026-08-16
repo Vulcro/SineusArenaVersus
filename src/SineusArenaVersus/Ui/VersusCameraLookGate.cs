@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Runtime.CompilerServices;
 using HarmonyLib;
 using UnityEngine;
 
@@ -53,9 +54,22 @@ public static class VersusCameraLookGate
         if (!_radialOpen)
             return;
 
-        VersusCursor.UnlockForUi();
-        SuppressLookBehaviours();
-        Suppressor.EnsureSuppressed();
+        ApplyOpenFrame();
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static void ApplyOpenFrame()
+    {
+        try
+        {
+            VersusCursor.UnlockForUi();
+            SuppressLookBehaviours();
+            Suppressor.EnsureSuppressed();
+        }
+        catch (Exception)
+        {
+            // Unity player APIs are unavailable outside the game process.
+        }
     }
 
     internal static bool ShouldSuppressTypeName(string typeName)

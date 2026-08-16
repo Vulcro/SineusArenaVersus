@@ -17,6 +17,7 @@ public sealed class VersusHud : MonoBehaviour
 
     private VersusMatch? _match;
     private VersusSpectate? _spectate;
+    private readonly SendRadialMenu _radial = new();
     private int _targetIndex;
     private ulong[] _livingTargets = Array.Empty<ulong>();
     private bool _collapsed;
@@ -24,6 +25,7 @@ public sealed class VersusHud : MonoBehaviour
     private const int SideWindowId = 0x56525332; // VRS2
 
     public event Action? LeaveMatchRequested;
+    public int TargetIndex => _targetIndex;
 
     public void Bind(VersusMatch? match, VersusSpectate? spectate = null)
     {
@@ -31,21 +33,47 @@ public sealed class VersusHud : MonoBehaviour
         _spectate = spectate;
         _targetIndex = 0;
         _collapsed = false;
+        _radial.Close();
         _spectate?.Bind(match);
+    }
+
+    public void TickInput(VersusInputFrame frame)
+    {
+        if (_match is null)
+        {
+            _radial.Close();
+            return;
+        }
+
+        RefreshLivingTargets();
+        var previous = _targetIndex;
+        _radial.Tick(frame, _match, ref _targetIndex, _livingTargets);
+        if (_spectate is not null &&
+            _targetIndex != previous &&
+            _spectate.ShowMiniView &&
+            _targetIndex >= 0 &&
+            _targetIndex < _livingTargets.Length)
+            _spectate.SetFocusedPeer(_livingTargets[_targetIndex]);
     }
 
     public void ToggleCollapsed() => _collapsed = !_collapsed;
 
     private void OnGUI()
     {
-        if (_collapsed ||
-            _match is null ||
+        if (_match is null ||
             !_match.IsActive && _match.State != VersusMatchState.Ended)
             return;
 
-        VersusCursor.UnlockForUi();
-        DrawRivalStrip();
-        DrawSidePanel();
+        if (_match.State is VersusMatchState.Eliminated or VersusMatchState.Ended)
+            VersusCursor.UnlockForUi();
+
+        if (!_collapsed)
+        {
+            DrawRivalStrip();
+            DrawSidePanel();
+        }
+
+        _radial.Draw();
         DrawOverlay();
     }
 
@@ -58,6 +86,12 @@ public sealed class VersusHud : MonoBehaviour
         if (rivals.Length == 0)
             return;
 
+        RefreshLivingTargets();
+        var selectedId = _livingTargets.Length > 0 &&
+                         _targetIndex >= 0 &&
+                         _targetIndex < _livingTargets.Length
+            ? _livingTargets[_targetIndex]
+            : 0UL;
         var totalWidth = rivals.Length * RivalCardWidth + (rivals.Length - 1) * RivalCardGap;
         var startX = (Screen.width - totalWidth) * 0.5f;
         for (var i = 0; i < rivals.Length; i++)
@@ -67,7 +101,11 @@ public sealed class VersusHud : MonoBehaviour
                 12f,
                 RivalCardWidth,
                 RivalCardHeight);
+            var selected = rivals[i].PeerId == selectedId;
+            if (selected)
+                VersusUiTheme.DrawFilled(rect, VersusUiTheme.HoverFill);
             RivalCardView.Draw(rect, rivals[i], RivalCardView.FormatPeerName(rivals[i].PeerId));
+            TrySelectRivalFromClick(rect, rivals[i].PeerId);
         }
     }
 
@@ -85,12 +123,12 @@ public sealed class VersusHud : MonoBehaviour
 
     private void DrawSideWindow(int id)
     {
-        DrawShopPanel();
+        DrawInfoPanel();
         DrawSpectatePanel();
         DrawPreviewPanel();
     }
 
-    private void DrawShopPanel()
+    private void DrawInfoPanel()
     {
         var economy = _match!.Economy;
         GUILayout.Label($"VP: {economy.Vp}");
@@ -104,26 +142,8 @@ public sealed class VersusHud : MonoBehaviour
             return;
         }
 
-        var labels = _livingTargets.Select(RivalCardView.FormatPeerName).ToArray();
         _targetIndex = Mathf.Clamp(_targetIndex, 0, _livingTargets.Length - 1);
-        var previousTargetIndex = _targetIndex;
-        _targetIndex = GUILayout.SelectionGrid(_targetIndex, labels, 1);
-        if (_spectate is not null &&
-            _targetIndex != previousTargetIndex &&
-            _spectate.ShowMiniView &&
-            _livingTargets.Length > 0)
-            _spectate.SetFocusedPeer(_livingTargets[_targetIndex]);
-
-        GUILayout.Space(8f);
-        var shopEnabled = _match.ShopEnabled;
-        foreach (var offering in _match.Catalog.All)
-        {
-            var canAfford = economy.Vp >= offering.Cost;
-            GUI.enabled = shopEnabled && canAfford;
-            if (GUILayout.Button($"{offering.DisplayName} ({offering.Cost} VP)"))
-                _match.TryQueueSend(_livingTargets[_targetIndex], offering.Id);
-            GUI.enabled = true;
-        }
+        GUILayout.Label($"Target: {RivalCardView.FormatPeerName(_livingTargets[_targetIndex])}");
     }
 
     private void DrawSpectatePanel()
@@ -204,9 +224,34 @@ public sealed class VersusHud : MonoBehaviour
             LeaveMatchRequested?.Invoke();
     }
 
+    private void TrySelectRivalFromClick(Rect rect, ulong peerId)
+    {
+        var current = Event.current;
+        if (current is null ||
+            current.type != EventType.MouseDown ||
+            current.button != 0 ||
+            !rect.Contains(current.mousePosition))
+            return;
+
+        var livingIndex = Array.IndexOf(_livingTargets, peerId);
+        if (livingIndex < 0)
+            return;
+
+        _targetIndex = livingIndex;
+        current.Use();
+        if (_spectate is not null && _spectate.ShowMiniView)
+            _spectate.SetFocusedPeer(peerId);
+    }
+
     private void RefreshLivingTargets()
     {
-        _livingTargets = _match!.Peers.Values
+        if (_match is null)
+        {
+            _livingTargets = Array.Empty<ulong>();
+            return;
+        }
+
+        _livingTargets = _match.Peers.Values
             .Where(peer => peer.PeerId != _match.LocalPeerId && peer.IsAlive)
             .Select(peer => peer.PeerId)
             .ToArray();
