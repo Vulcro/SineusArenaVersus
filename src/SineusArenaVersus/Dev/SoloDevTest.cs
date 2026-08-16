@@ -43,7 +43,8 @@ public static class SoloDevTest
         ISoloRunLauncher launcher = VersusConfig.SoloDevBootArena.Value
             ? new ReflectionSoloRunLauncher(
                 message => VersusPlugin.Log.LogError(message),
-                detachVersusLobby: () => VersusPlugin.ActiveLobby?.DetachLobbyForMatch())
+                detachVersusLobby: null, // keep hub Steam/NGO session for soft arena boot
+                softBoot: true)
             : new AlreadyRunningSoloLauncher();
 
         var economy = new VersusEconomy(

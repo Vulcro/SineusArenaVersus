@@ -13,21 +13,24 @@ public interface ISoloRunLauncher
 }
 
 /// <summary>
-/// Boots an isolated local solo NGO session.
-/// Versus Friends share one Steam lobby, which QuickStart treats as co-op NGO —
-/// we must leave that lobby and drop remote clients before loading the arena.
+/// Boots / attaches a local solo NGO session and loads the selected arena.
+/// Avoids full NetworkManager shutdown when already alone as host — that aborts
+/// scene sync and leaves the "waiting for players" overlay stuck.
 /// </summary>
 public sealed class ReflectionSoloRunLauncher : ISoloRunLauncher
 {
     private readonly Action<string> _logError;
     private readonly Action? _detachVersusLobby;
+    private readonly bool _softBoot;
 
     public ReflectionSoloRunLauncher(
         Action<string>? logError = null,
-        Action? detachVersusLobby = null)
+        Action? detachVersusLobby = null,
+        bool softBoot = false)
     {
         _logError = logError ?? (message => Debug.LogError(message));
         _detachVersusLobby = detachVersusLobby;
+        _softBoot = softBoot;
     }
 
     public bool TryStartSoloRun()
@@ -37,61 +40,19 @@ public sealed class ReflectionSoloRunLauncher : ISoloRunLauncher
 
         try
         {
-            // 1) Leave shared Steam lobby so QuickStart cannot re-attach the friend as NGO client.
             _detachVersusLobby?.Invoke();
-            InvokeInstance("UILobbySteamController", "LeaveSteamLobby");
-            InvokeInstance("UILobbySteamController", "DisconnectNetworkCompletely");
-
-            var quickStartType = AccessTools.TypeByName("QuickStartLobby");
-            var quickStart = quickStartType is null
-                ? null
-                : AccessTools.Property(quickStartType, "I")?.GetValue(null, null);
-            var startHost = quickStartType is null
-                ? null
-                : AccessTools.Method(quickStartType, "StartAsHost", Type.EmptyTypes);
-            if (quickStart is null || startHost is null)
-            {
-                _logError("[SineusArenaVersus] QuickStartLobby.StartAsHost unavailable.");
-                return false;
-            }
-
-            startHost.Invoke(quickStart, null);
-            DisconnectRemoteClients();
 
             var mapId = ResolveSelectedMapId();
             if (string.IsNullOrWhiteSpace(mapId))
             {
-                _logError("[SineusArenaVersus] No map selected. Pick a map in the lobby UI, then Start Versus.");
+                _logError("[SineusArenaVersus] No map selected. Pick a map in the lobby UI first.");
                 return false;
             }
 
-            var clientCount = GetConnectedClientCount();
-            if (clientCount != 1)
-            {
-                _logError(
-                    $"[SineusArenaVersus] Solo boot aborted: expected 1 NGO client, found {clientCount}. " +
-                    "Friend must not stay connected to your lobby session — retry Start Versus.");
-                return false;
-            }
+            if (_softBoot || CanSoftBoot())
+                return SoftBootArena(mapId!);
 
-            var sceneManagerType = AccessTools.TypeByName("ProjectSceneManager");
-            var sceneManager = sceneManagerType is null
-                ? null
-                : AccessTools.Property(sceneManagerType, "I")?.GetValue(null, null);
-            var prepare = sceneManagerType is null
-                ? null
-                : AccessTools.Method(
-                    sceneManagerType,
-                    "PrepareFirstMissionAfterSync",
-                    new[] { typeof(string), typeof(int) });
-            if (sceneManager is null || prepare is null)
-            {
-                _logError("[SineusArenaVersus] ProjectSceneManager.PrepareFirstMissionAfterSync unavailable.");
-                return false;
-            }
-
-            prepare.Invoke(sceneManager, new object[] { mapId!, 1 });
-            return true;
+            return HardBootArena(mapId!);
         }
         catch (Exception exception)
         {
@@ -101,6 +62,134 @@ public sealed class ReflectionSoloRunLauncher : ISoloRunLauncher
     }
 
     public bool IsSoloRunActive() => GameFacades.IsSoloRunActive();
+
+    private bool CanSoftBoot()
+    {
+        var nm = GetNetworkManager();
+        if (nm is null || !ReadBool(nm, "IsListening"))
+            return false;
+        if (!ReadBool(nm, "IsHost") && !ReadBool(nm, "IsServer"))
+            return false;
+        return GetConnectedClientCount() == 1;
+    }
+
+    private bool SoftBootArena(string mapId)
+    {
+        // Already a single-player host in the hub: do not Shutdown — just load the mission.
+        DisconnectRemoteClients();
+        if (GetConnectedClientCount() != 1)
+        {
+            _logError(
+                $"[SineusArenaVersus] Soft solo boot needs exactly 1 NGO client (have {GetConnectedClientCount()}).");
+            return false;
+        }
+
+        if (!PrepareFirstMission(mapId, expectedClients: 1))
+            return false;
+
+        ScheduleReadyNudge();
+        return true;
+    }
+
+    private bool HardBootArena(string mapId)
+    {
+        // Friends Versus path: drop shared session, then local host + mission.
+        InvokeInstance("UILobbySteamController", "LeaveSteamLobby");
+        InvokeInstance("UILobbySteamController", "DisconnectNetworkCompletely");
+
+        var quickStartType = AccessTools.TypeByName("QuickStartLobby");
+        var quickStart = quickStartType is null
+            ? null
+            : AccessTools.Property(quickStartType, "I")?.GetValue(null, null);
+        var startHost = quickStartType is null
+            ? null
+            : AccessTools.Method(quickStartType, "StartAsHost", Type.EmptyTypes);
+        if (quickStart is null || startHost is null)
+        {
+            _logError("[SineusArenaVersus] QuickStartLobby.StartAsHost unavailable.");
+            return false;
+        }
+
+        startHost.Invoke(quickStart, null);
+        DisconnectRemoteClients();
+
+        if (GetConnectedClientCount() != 1)
+        {
+            _logError(
+                $"[SineusArenaVersus] Hard solo boot aborted: expected 1 NGO client, found {GetConnectedClientCount()}.");
+            return false;
+        }
+
+        if (!PrepareFirstMission(mapId, expectedClients: 1))
+            return false;
+
+        ScheduleReadyNudge();
+        return true;
+    }
+
+    private static void ScheduleReadyNudge()
+    {
+        TryNotifyLocalClientReady();
+        var start = Net.VersusNet.StartCoroutine;
+        start?.Invoke(ReadyNudgeCoroutine());
+    }
+
+    private static IEnumerator ReadyNudgeCoroutine()
+    {
+        for (var i = 0; i < 40; i++)
+        {
+            yield return new WaitForSecondsRealtime(0.25f);
+            TryNotifyLocalClientReady();
+            if (GameFacades.IsSoloRunActive())
+                yield break;
+        }
+    }
+
+    private static bool PrepareFirstMission(string mapId, int expectedClients)
+    {
+        var sceneManagerType = AccessTools.TypeByName("ProjectSceneManager");
+        var sceneManager = sceneManagerType is null
+            ? null
+            : AccessTools.Property(sceneManagerType, "I")?.GetValue(null, null);
+        var prepare = sceneManagerType is null
+            ? null
+            : AccessTools.Method(
+                sceneManagerType,
+                "PrepareFirstMissionAfterSync",
+                new[] { typeof(string), typeof(int) });
+        if (sceneManager is null || prepare is null)
+            return false;
+
+        prepare.Invoke(sceneManager, new object[] { mapId, expectedClients });
+        return true;
+    }
+
+    /// <summary>
+    /// Marks the local client ready so GameFlowManager.TryStartGameplay can leave the wait overlay.
+    /// </summary>
+    private static void TryNotifyLocalClientReady()
+    {
+        try
+        {
+            var flowType = AccessTools.TypeByName("GameFlowManager");
+            var flow = flowType is null
+                ? null
+                : AccessTools.Property(flowType, "I")?.GetValue(null, null);
+            if (flow is null)
+                return;
+
+            var notify = AccessTools.Method(flowType, "TryAutoNotifyClientReady", Type.EmptyTypes)
+                         ?? AccessTools.Method(flowType, "NotifyClientReadyServerRpc", Type.EmptyTypes);
+            notify?.Invoke(flow, null);
+
+            var tryStart = AccessTools.Method(flowType, "TryStartGameplay", Type.EmptyTypes);
+            tryStart?.Invoke(flow, null);
+        }
+        catch
+        {
+            // Best-effort; scene handshake may still complete via vanilla callbacks.
+        }
+    }
 
     private static void DisconnectRemoteClients()
     {
@@ -141,24 +230,33 @@ public sealed class ReflectionSoloRunLauncher : ISoloRunLauncher
             }
             catch
             {
-                // Best-effort; PrepareFirstMission will re-check count.
+                // Best-effort.
             }
         }
     }
 
-    private static int GetConnectedClientCount()
+    private static object? GetNetworkManager()
     {
         var nmType = AccessTools.TypeByName("Unity.Netcode.NetworkManager");
-        var nm = nmType is null
+        return nmType is null
             ? null
             : AccessTools.Property(nmType, "Singleton")?.GetValue(null, null);
+    }
+
+    private static bool ReadBool(object target, string propertyName)
+    {
+        var value = AccessTools.Property(target.GetType(), propertyName)?.GetValue(target, null);
+        return value is bool b && b;
+    }
+
+    private static int GetConnectedClientCount()
+    {
+        var nm = GetNetworkManager();
         if (nm is null)
             return 0;
 
-        var list = AccessTools.Property(nmType, "ConnectedClientsList")?.GetValue(nm, null);
-        if (list is ICollection collection)
-            return collection.Count;
-        return 0;
+        var list = AccessTools.Property(nm.GetType(), "ConnectedClientsList")?.GetValue(nm, null);
+        return list is ICollection collection ? collection.Count : 0;
     }
 
     private static string? ResolveSelectedMapId()
