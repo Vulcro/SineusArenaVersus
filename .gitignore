@@ -1,0 +1,7 @@
+﻿.worktrees/
+.superpowers/
+dist/
+bin/
+obj/
+*.user
+.vs/
