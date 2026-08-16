@@ -3,36 +3,20 @@ using Steamworks;
 
 namespace SineusArenaVersus.Steam;
 
-internal interface ISteamRuntime
-{
-    bool IsValid { get; }
-    void Init(uint appId, bool asyncCallbacks);
-    void RunCallbacks();
-    void Shutdown();
-}
-
+/// <summary>
+/// Attaches to the game's existing Steamworks.NET session (no second SteamAPI_Init).
+/// </summary>
 public sealed class SteamBootstrap : IDisposable
 {
     public const uint AppId = 4227400;
 
-    private readonly ISteamRuntime _runtime;
     private readonly Action<Exception> _onError;
     private readonly Action<string>? _onInfo;
-    private bool _ownsClient;
-    private bool _ownsCallbackPump;
     private bool _disposed;
+    private string? _lastFailReason;
 
     public SteamBootstrap(Action<Exception>? onError = null, Action<string>? onInfo = null)
-        : this(new FacepunchSteamRuntime(), onError, onInfo)
     {
-    }
-
-    internal SteamBootstrap(
-        ISteamRuntime runtime,
-        Action<Exception>? onError = null,
-        Action<string>? onInfo = null)
-    {
-        _runtime = runtime ?? throw new ArgumentNullException(nameof(runtime));
         _onError = onError ?? (_ => { });
         _onInfo = onInfo;
     }
@@ -41,40 +25,67 @@ public sealed class SteamBootstrap : IDisposable
 
     public bool Initialize()
     {
-        ThrowIfDisposed();
+        if (_disposed)
+            throw new ObjectDisposedException(nameof(SteamBootstrap));
         if (IsAvailable)
             return true;
 
         try
         {
-            if (!_runtime.IsValid)
+            // Game owns SteamAPI.Init via Heathen/SteamTools — never call Init here.
+            // IsSteamRunning() is unreliable here (always false under TMM while coop works).
+            if (!SteamSession.TryGetLocalId(out var id))
             {
-                _runtime.Init(AppId, asyncCallbacks: false);
-                _ownsClient = true;
-                _ownsCallbackPump = true;
+                var running = false;
+                try
+                {
+                    running = SteamAPI.IsSteamRunning();
+                }
+                catch
+                {
+                    // ignored — diagnostic only
+                }
+
+                var reason =
+                    $"SteamUser.GetSteamID() invalid (IsSteamRunning={running}). Waiting for game SteamTools init.";
+                if (!string.Equals(_lastFailReason, reason, StringComparison.Ordinal))
+                {
+                    _lastFailReason = reason;
+                    _onInfo?.Invoke(reason);
+                }
+
+                IsAvailable = false;
+                return false;
             }
 
-            IsAvailable = _runtime.IsValid;
-            if (!IsAvailable)
-                _onInfo?.Invoke("SteamClient.IsValid is false after Init.");
-            return IsAvailable;
+            IsAvailable = true;
+            _lastFailReason = null;
+            _onInfo?.Invoke($"Attached to Steamworks.NET as {id.m_SteamID}");
+            return true;
         }
         catch (Exception exception)
         {
-            _onError(exception);
-            IsAvailable = _runtime.IsValid;
-            return IsAvailable;
+            var reason = exception.GetType().Name + ": " + exception.Message;
+            if (!string.Equals(_lastFailReason, reason, StringComparison.Ordinal))
+            {
+                _lastFailReason = reason;
+                _onError(exception);
+            }
+
+            IsAvailable = false;
+            return false;
         }
     }
 
     public void RunCallbacks()
     {
-        if (_disposed || !_ownsCallbackPump || !IsAvailable || !_runtime.IsValid)
+        // Game already pumps Steamworks.NET callbacks; extra RunCallbacks is safe.
+        if (_disposed || !IsAvailable)
             return;
 
         try
         {
-            _runtime.RunCallbacks();
+            SteamAPI.RunCallbacks();
         }
         catch (Exception exception)
         {
@@ -84,29 +95,10 @@ public sealed class SteamBootstrap : IDisposable
 
     public void Dispose()
     {
-        if (_disposed)
-            return;
-        if (_ownsClient && _runtime.IsValid)
-            _runtime.Shutdown();
+        // Do not SteamAPI.Shutdown — the game owns the session.
         IsAvailable = false;
         _disposed = true;
     }
 
-    private void ThrowIfDisposed()
-    {
-        if (_disposed)
-            throw new ObjectDisposedException(nameof(SteamBootstrap));
-    }
-
-    private sealed class FacepunchSteamRuntime : ISteamRuntime
-    {
-        public bool IsValid => SteamClient.IsValid;
-
-        public void Init(uint appId, bool asyncCallbacks) =>
-            SteamClient.Init(appId, asyncCallbacks);
-
-        public void RunCallbacks() => SteamClient.RunCallbacks();
-
-        public void Shutdown() => SteamClient.Shutdown();
-    }
+    public static ulong LocalSteamId() => SteamSession.LocalIdOrZero();
 }

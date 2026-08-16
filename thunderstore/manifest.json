@@ -1,7 +1,7 @@
 {
   "name": "SineusArenaVersus",
-  "version_number": "0.1.1",
-  "website_url": "https://github.com/Vulcro/SineusArenaVersus",
+  "version_number": "0.1.6",
+  "website_url": "https://github.com/DocFowks/SineusArenaVersus",
   "description": "Versus mode: independent solo arenas, VP monster sends, last stronghold standing.",
   "dependencies": [
     "BepInEx-BepInExPack-5.4.2305"

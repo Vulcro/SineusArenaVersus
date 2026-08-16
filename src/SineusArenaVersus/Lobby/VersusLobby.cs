@@ -1,11 +1,9 @@
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Threading.Tasks;
 using SineusArenaVersus.Net;
+using SineusArenaVersus.Steam;
 using Steamworks;
-using Steamworks.Data;
-using SteamLobby = Steamworks.Data.Lobby;
 
 namespace SineusArenaVersus.Lobby;
 
@@ -17,7 +15,13 @@ public sealed class VersusLobby : IDisposable
     private readonly Func<int> _maxPlayers;
     private readonly Func<float> _waveInterval;
     private readonly Func<VersusNet?> _net;
-    private SteamLobby? _lobby;
+    private readonly Callback<GameLobbyJoinRequested_t> _joinRequested;
+    private readonly Callback<LobbyChatUpdate_t> _lobbyChatUpdate;
+    private readonly CallResult<LobbyCreated_t> _lobbyCreated;
+    private readonly CallResult<LobbyEnter_t> _lobbyEnter;
+    private CSteamID? _lobbyId;
+    private TaskCompletionSource<CSteamID>? _createTcs;
+    private TaskCompletionSource<bool>? _joinTcs;
     private bool _disposed;
 
     public VersusLobby(
@@ -28,144 +32,166 @@ public sealed class VersusLobby : IDisposable
         _maxPlayers = maxPlayers ?? throw new ArgumentNullException(nameof(maxPlayers));
         _waveInterval = waveInterval ?? throw new ArgumentNullException(nameof(waveInterval));
         _net = net ?? throw new ArgumentNullException(nameof(net));
-        SteamFriends.OnGameLobbyJoinRequested += HandleJoinRequested;
-        SteamMatchmaking.OnLobbyMemberLeave += HandleMemberLeave;
+        _joinRequested = Callback<GameLobbyJoinRequested_t>.Create(OnJoinRequested);
+        _lobbyChatUpdate = Callback<LobbyChatUpdate_t>.Create(OnLobbyChatUpdate);
+        _lobbyCreated = CallResult<LobbyCreated_t>.Create();
+        _lobbyEnter = CallResult<LobbyEnter_t>.Create();
     }
 
     public event Action? SessionChanged;
     public event Action<ulong>? MemberLeft;
     public event Action<Exception>? LobbyError;
 
-    public bool HasLobby => _lobby.HasValue;
-    public ulong LobbyId => _lobby?.Id ?? 0UL;
-    public ulong HostPeerId => _lobby?.Owner.Id ?? 0UL;
-    public bool IsLocalHost => _lobby?.IsOwnedBy(SteamClient.SteamId) == true;
-    public bool IsLocalReady => _lobby.HasValue &&
-                                _lobby.Value.GetMemberData(
-                                    new Friend(SteamClient.SteamId),
-                                    ReadyDataKey) == "1";
-    public IReadOnlyList<ulong> Members =>
-        _lobby?.Members.Select(member => (ulong)member.Id).ToArray() ?? Array.Empty<ulong>();
+    public bool HasLobby => _lobbyId.HasValue && _lobbyId.Value.IsValid();
+    public ulong LobbyId => _lobbyId?.m_SteamID ?? 0UL;
+    public ulong HostPeerId =>
+        HasLobby ? SteamMatchmaking.GetLobbyOwner(_lobbyId!.Value).m_SteamID : 0UL;
+    public bool IsLocalHost =>
+        HasLobby && SteamMatchmaking.GetLobbyOwner(_lobbyId!.Value) == SteamUser.GetSteamID();
+    public bool IsLocalReady =>
+        HasLobby &&
+        SteamMatchmaking.GetLobbyMemberData(_lobbyId!.Value, SteamUser.GetSteamID(), ReadyDataKey) == "1";
 
-    public async Task HostLobbyAsync()
+    public IReadOnlyList<ulong> Members
+    {
+        get
+        {
+            if (!HasLobby)
+                return Array.Empty<ulong>();
+
+            var count = SteamMatchmaking.GetNumLobbyMembers(_lobbyId!.Value);
+            var members = new ulong[count];
+            for (var i = 0; i < count; i++)
+                members[i] = SteamMatchmaking.GetLobbyMemberByIndex(_lobbyId.Value, i).m_SteamID;
+            return members;
+        }
+    }
+
+    public Task HostLobbyAsync()
     {
         ThrowIfDisposed();
         RequireSteam();
-        if (_lobby.HasValue)
+        if (HasLobby)
             throw new InvalidOperationException("Already in a Steam lobby.");
 
         var maxPlayers = _maxPlayers();
         if (maxPlayers < 2 || maxPlayers > 4)
             throw new InvalidOperationException("Versus lobby size must be between 2 and 4.");
 
-        var lobby = await SteamMatchmaking.CreateLobbyAsync(maxPlayers);
-        if (!lobby.HasValue)
-            throw new InvalidOperationException("Steam did not create the Versus lobby.");
-
-        _lobby = lobby.Value;
-        _lobby.Value.SetFriendsOnly();
-        _lobby.Value.SetJoinable(true);
-        if (!_lobby.Value.SetData(VersusDataKey, "1"))
-            throw new InvalidOperationException("Steam rejected Versus lobby metadata.");
-        _lobby.Value.SetMemberData(ReadyDataKey, "0");
-        SessionChanged?.Invoke();
-    }
-
-    public void InviteFriend(SteamId id)
-    {
-        ThrowIfDisposed();
-        var lobby = RequireLobby();
-        if (!lobby.InviteFriend(id))
-            throw new InvalidOperationException($"Steam rejected the lobby invite for {id}.");
+        _createTcs = new TaskCompletionSource<CSteamID>();
+        var call = SteamMatchmaking.CreateLobby(ELobbyType.k_ELobbyTypeFriendsOnly, maxPlayers);
+        _lobbyCreated.Set(call, OnLobbyCreated);
+        return WaitCreateAndConfigureAsync();
     }
 
     public void OpenInviteOverlay()
     {
         ThrowIfDisposed();
-        SteamFriends.OpenGameInviteOverlay(RequireLobby().Id);
+        SteamFriends.ActivateGameOverlayInviteDialog(RequireLobby());
     }
 
     public bool IsMemberReady(ulong peerId)
     {
         var lobby = RequireLobby();
-        return lobby.GetMemberData(new Friend(peerId), ReadyDataKey) == "1";
+        return SteamMatchmaking.GetLobbyMemberData(lobby, new CSteamID(peerId), ReadyDataKey) == "1";
     }
 
     public void SetReady(bool ready)
     {
         ThrowIfDisposed();
-        var lobby = RequireLobby();
-        lobby.SetMemberData(ReadyDataKey, ready ? "1" : "0");
+        SteamMatchmaking.SetLobbyMemberData(RequireLobby(), ReadyDataKey, ready ? "1" : "0");
     }
 
     public void StartMatchAsHost()
     {
         ThrowIfDisposed();
         var lobby = RequireLobby();
-        if (!lobby.IsOwnedBy(SteamClient.SteamId))
+        if (SteamMatchmaking.GetLobbyOwner(lobby) != SteamUser.GetSteamID())
             throw new InvalidOperationException("Only the lobby owner can start Versus.");
 
-        var members = lobby.Members.ToArray();
-        if (members.Length < 2 || members.Length > _maxPlayers())
+        var members = Members;
+        if (members.Count < 2 || members.Count > _maxPlayers())
             throw new InvalidOperationException("Versus requires 2-4 lobby members.");
-        if (members.Any(member => lobby.GetMemberData(member, ReadyDataKey) != "1"))
-            throw new InvalidOperationException("Every lobby member must be ready.");
+        foreach (var peerId in members)
+        {
+            if (SteamMatchmaking.GetLobbyMemberData(lobby, new CSteamID(peerId), ReadyDataKey) != "1")
+                throw new InvalidOperationException("Every lobby member must be ready.");
+        }
 
         var net = _net() ?? throw new InvalidOperationException("Versus networking is not attached.");
-        if (!net.StartMatchAsHost(
-                lobby.Id,
-                members.Select(member => (ulong)member.Id).ToArray(),
-                _waveInterval()))
+        if (!net.StartMatchAsHost(lobby.m_SteamID, members, _waveInterval()))
             throw new InvalidOperationException(
                 "Versus start aborted because the local solo run could not be launched.");
     }
 
-    public bool ContainsPeer(ulong peerId) =>
-        _lobby?.Members.Any(member => member.Id == peerId) == true;
-
-    internal static bool IsVersusLobby(string? value) =>
-        string.Equals(value, "1", StringComparison.Ordinal);
-
-    internal static async Task<bool> RefreshAndCheckVersusAsync(
-        Func<Task<bool>> refresh,
-        Func<string?> readVersusData)
+    public bool ContainsPeer(ulong peerId)
     {
-        if (refresh is null)
-            throw new ArgumentNullException(nameof(refresh));
-        if (readVersusData is null)
-            throw new ArgumentNullException(nameof(readVersusData));
+        foreach (var member in Members)
+        {
+            if (member == peerId)
+                return true;
+        }
 
-        return await refresh() && IsVersusLobby(readVersusData());
+        return false;
     }
 
     public void Dispose()
     {
         if (_disposed)
             return;
-        SteamFriends.OnGameLobbyJoinRequested -= HandleJoinRequested;
-        SteamMatchmaking.OnLobbyMemberLeave -= HandleMemberLeave;
-        if (_lobby.HasValue)
-            _lobby.Value.Leave();
-        _lobby = null;
+        if (HasLobby)
+            SteamMatchmaking.LeaveLobby(_lobbyId!.Value);
+        _lobbyId = null;
         _disposed = true;
     }
 
-    private async void HandleJoinRequested(SteamLobby lobby, SteamId friendId)
+    private async Task WaitCreateAndConfigureAsync()
+    {
+        var lobby = await _createTcs!.Task.ConfigureAwait(true);
+        _lobbyId = lobby;
+        SteamMatchmaking.SetLobbyJoinable(lobby, true);
+        if (!SteamMatchmaking.SetLobbyData(lobby, VersusDataKey, "1"))
+            throw new InvalidOperationException("Steam rejected Versus lobby metadata.");
+        SteamMatchmaking.SetLobbyMemberData(lobby, ReadyDataKey, "0");
+        SessionChanged?.Invoke();
+    }
+
+    private void OnLobbyCreated(LobbyCreated_t data, bool ioFailure)
+    {
+        if (_createTcs is null)
+            return;
+        if (ioFailure || data.m_eResult != EResult.k_EResultOK)
+        {
+            _createTcs.TrySetException(
+                new InvalidOperationException($"Steam lobby create failed: {data.m_eResult}"));
+            return;
+        }
+
+        _createTcs.TrySetResult(new CSteamID(data.m_ulSteamIDLobby));
+    }
+
+    private async void OnJoinRequested(GameLobbyJoinRequested_t data)
     {
         try
         {
             if (_disposed)
                 return;
-            if (!await RefreshAndCheckVersusAsync(
-                    () => RefreshLobbyAsync(lobby),
-                    () => lobby.GetData(VersusDataKey)))
-                return;
-            var result = await lobby.Join();
-            if (result != RoomEnter.Success)
-                throw new InvalidOperationException($"Steam lobby join failed: {result}.");
 
-            _lobby = lobby;
-            _lobby.Value.SetMemberData(ReadyDataKey, "0");
+            var lobby = data.m_steamIDLobby;
+            var ok = await VersusLobbyInviteFilter.RefreshAndCheckVersusAsync(
+                () => RefreshLobbyAsync(lobby),
+                () => SteamMatchmaking.GetLobbyData(lobby, VersusDataKey));
+            if (!ok)
+                return;
+
+            _joinTcs = new TaskCompletionSource<bool>();
+            var call = SteamMatchmaking.JoinLobby(lobby);
+            _lobbyEnter.Set(call, OnLobbyEntered);
+            if (!await _joinTcs.Task.ConfigureAwait(true))
+                throw new InvalidOperationException("Steam lobby join failed.");
+
+            _lobbyId = lobby;
+            SteamMatchmaking.SetLobbyMemberData(lobby, ReadyDataKey, "0");
             SessionChanged?.Invoke();
         }
         catch (Exception exception)
@@ -174,43 +200,63 @@ public sealed class VersusLobby : IDisposable
         }
     }
 
-    private static async Task<bool> RefreshLobbyAsync(SteamLobby lobby)
+    private void OnLobbyEntered(LobbyEnter_t data, bool ioFailure)
     {
-        var completion = new TaskCompletionSource<bool>();
-
-        void HandleLobbyDataChanged(SteamLobby refreshedLobby)
+        if (_joinTcs is null)
+            return;
+        if (ioFailure || data.m_EChatRoomEnterResponse != (uint)EChatRoomEnterResponse.k_EChatRoomEnterResponseSuccess)
         {
-            if (refreshedLobby.Id == lobby.Id)
-                completion.TrySetResult(true);
+            _joinTcs.TrySetResult(false);
+            return;
         }
 
-        SteamMatchmaking.OnLobbyDataChanged += HandleLobbyDataChanged;
-        try
-        {
-            if (!lobby.Refresh())
-                return false;
-            return await completion.Task;
-        }
-        finally
-        {
-            SteamMatchmaking.OnLobbyDataChanged -= HandleLobbyDataChanged;
-        }
+        _joinTcs.TrySetResult(true);
     }
 
-    private void HandleMemberLeave(SteamLobby lobby, Friend member)
+    private static Task<bool> RefreshLobbyAsync(CSteamID lobby)
     {
-        if (_disposed || !_lobby.HasValue || lobby.Id != _lobby.Value.Id)
+        var tcs = new TaskCompletionSource<bool>();
+        Callback<LobbyDataUpdate_t>? callback = null;
+        callback = Callback<LobbyDataUpdate_t>.Create(update =>
+        {
+            if (update.m_ulSteamIDLobby != lobby.m_SteamID)
+                return;
+            callback?.Dispose();
+            tcs.TrySetResult(update.m_bSuccess != 0);
+        });
+
+        if (!SteamMatchmaking.RequestLobbyData(lobby))
+        {
+            callback.Dispose();
+            return Task.FromResult(false);
+        }
+
+        return tcs.Task;
+    }
+
+    private void OnLobbyChatUpdate(LobbyChatUpdate_t data)
+    {
+        if (_disposed || !HasLobby || data.m_ulSteamIDLobby != _lobbyId!.Value.m_SteamID)
             return;
 
-        MemberLeft?.Invoke(member.Id);
+        const uint leftFlags =
+            (uint)EChatMemberStateChange.k_EChatMemberStateChangeLeft |
+            (uint)EChatMemberStateChange.k_EChatMemberStateChangeDisconnected |
+            (uint)EChatMemberStateChange.k_EChatMemberStateChangeKicked |
+            (uint)EChatMemberStateChange.k_EChatMemberStateChangeBanned;
+        if ((data.m_rgfChatMemberStateChange & leftFlags) == 0)
+            return;
+
+        MemberLeft?.Invoke(data.m_ulSteamIDUserChanged);
+        SessionChanged?.Invoke();
     }
 
-    private SteamLobby RequireLobby() =>
-        _lobby ?? throw new InvalidOperationException("No Steam lobby is active.");
+    private CSteamID RequireLobby() =>
+        HasLobby ? _lobbyId!.Value : throw new InvalidOperationException("No Steam lobby is active.");
 
     private static void RequireSteam()
     {
-        if (!SteamClient.IsValid)
+        if (!SteamSession.IsAttached())
             throw new InvalidOperationException("Steam is unavailable.");
     }
 

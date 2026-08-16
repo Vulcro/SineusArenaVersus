@@ -13,7 +13,7 @@ public sealed class VersusLobbyTests
     [InlineData(null, false)]
     public void Invite_filter_requires_versus_metadata(string? value, bool expected)
     {
-        Assert.Equal(expected, VersusLobby.IsVersusLobby(value));
+        Assert.Equal(expected, VersusLobbyInviteFilter.IsVersusLobby(value));
     }
 
     [Fact]
@@ -21,7 +21,7 @@ public sealed class VersusLobbyTests
     {
         var refreshed = false;
 
-        var shouldJoin = await VersusLobby.RefreshAndCheckVersusAsync(
+        var shouldJoin = await VersusLobbyInviteFilter.RefreshAndCheckVersusAsync(
             () =>
             {
                 refreshed = true;
@@ -41,7 +41,7 @@ public sealed class VersusLobbyTests
     {
         var metadataRead = false;
 
-        var shouldJoin = await VersusLobby.RefreshAndCheckVersusAsync(
+        var shouldJoin = await VersusLobbyInviteFilter.RefreshAndCheckVersusAsync(
             () => Task.FromResult(false),
             () =>
             {

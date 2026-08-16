@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using SineusArenaVersus.Match;
 using SineusArenaVersus.Spectate;
+using SineusArenaVersus.Ui;
 using UnityEngine;
 
 namespace SineusArenaVersus.Hud;
@@ -19,6 +20,8 @@ public sealed class VersusHud : MonoBehaviour
     private int _targetIndex;
     private ulong[] _livingTargets = Array.Empty<ulong>();
     private bool _collapsed;
+    private Rect _sidePanelRect = new(0f, 12f, PanelWidth, 420f);
+    private const int SideWindowId = 0x56525332; // VRS2
 
     public event Action? LeaveMatchRequested;
 
@@ -72,12 +75,18 @@ public sealed class VersusHud : MonoBehaviour
         if (_match!.State is VersusMatchState.Eliminated or VersusMatchState.Ended)
             return;
 
-        var panelRect = new Rect(Screen.width - PanelWidth - 12f, 12f, PanelWidth, Screen.height - 24f);
-        GUILayout.BeginArea(panelRect, GUI.skin.box);
+        if (_sidePanelRect.x <= 0f)
+            _sidePanelRect.x = Screen.width - PanelWidth - 12f;
+        _sidePanelRect.width = PanelWidth;
+        _sidePanelRect.height = Mathf.Min(520f, Screen.height - 24f);
+        _sidePanelRect = VersusImguiWindow.Draw(SideWindowId, _sidePanelRect, DrawSideWindow, "Versus HUD");
+    }
+
+    private void DrawSideWindow(int id)
+    {
         DrawShopPanel();
         DrawSpectatePanel();
         DrawPreviewPanel();
-        GUILayout.EndArea();
     }
 
     private void DrawShopPanel()

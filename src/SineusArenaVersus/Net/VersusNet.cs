@@ -2,6 +2,8 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using SineusArenaVersus.Match;
+using SineusArenaVersus.Steam;
+using Steamworks;
 
 namespace SineusArenaVersus.Net;
 
@@ -418,20 +420,22 @@ public sealed class SteamP2PTransport : IVersusTransport, IDisposable
 {
     private readonly Func<ulong, bool> _isAllowedPeer;
     private readonly int _channel;
+    private readonly Callback<P2PSessionRequest_t> _sessionRequest;
+    private readonly byte[] _receiveBuffer = new byte[1024 * 512];
     private bool _disposed;
 
     public SteamP2PTransport(Func<ulong, bool> isAllowedPeer, int channel = 0)
     {
         _isAllowedPeer = isAllowedPeer ?? throw new ArgumentNullException(nameof(isAllowedPeer));
-        if (!global::Steamworks.SteamClient.IsValid)
-            throw new InvalidOperationException("Steam must be initialized before creating the transport.");
+        if (!SteamSession.IsAttached())
+            throw new InvalidOperationException("Steam must be available before creating the transport.");
 
         _channel = channel;
-        global::Steamworks.SteamNetworking.OnP2PSessionRequest += HandleSessionRequest;
-        global::Steamworks.SteamNetworking.AllowP2PPacketRelay(true);
+        _sessionRequest = Callback<P2PSessionRequest_t>.Create(HandleSessionRequest);
+        SteamNetworking.AllowP2PPacketRelay(true);
     }
 
-    public ulong LocalPeerId => global::Steamworks.SteamClient.SteamId;
+    public ulong LocalPeerId => SteamUser.GetSteamID().m_SteamID;
 
     public bool Send(ulong peerId, byte[] payload, bool reliable)
     {
@@ -441,28 +445,40 @@ public sealed class SteamP2PTransport : IVersusTransport, IDisposable
         if (!_isAllowedPeer(peerId))
             return false;
 
-        return global::Steamworks.SteamNetworking.SendP2PPacket(
-            peerId,
+        return SteamNetworking.SendP2PPacket(
+            new CSteamID(peerId),
             payload,
-            payload.Length,
-            _channel,
+            (uint)payload.Length,
             reliable
-                ? global::Steamworks.P2PSend.Reliable
-                : global::Steamworks.P2PSend.Unreliable);
+                ? EP2PSend.k_EP2PSendReliable
+                : EP2PSend.k_EP2PSendUnreliable,
+            _channel);
     }
 
     public bool TryReceive(out ReceivedPacket packet)
     {
         ThrowIfDisposed();
         packet = default;
-        if (!global::Steamworks.SteamNetworking.IsP2PPacketAvailable(_channel))
+        uint available;
+        if (!SteamNetworking.IsP2PPacketAvailable(out available, _channel) || available == 0)
+            return false;
+        if (available > _receiveBuffer.Length)
             return false;
 
-        var received = global::Steamworks.SteamNetworking.ReadP2PPacket(_channel);
-        if (!received.HasValue || !_isAllowedPeer(received.Value.SteamId))
+        CSteamID remote = default;
+        if (!SteamNetworking.ReadP2PPacket(
+                _receiveBuffer,
+                available,
+                out var msgSize,
+                out remote,
+                _channel))
+            return false;
+        if (!_isAllowedPeer(remote.m_SteamID) || msgSize == 0)
             return false;
 
-        packet = new ReceivedPacket(received.Value.SteamId, received.Value.Data);
+        var data = new byte[msgSize];
+        Buffer.BlockCopy(_receiveBuffer, 0, data, 0, (int)msgSize);
+        packet = new ReceivedPacket(remote.m_SteamID, data);
         return true;
     }
 
@@ -470,14 +486,14 @@ public sealed class SteamP2PTransport : IVersusTransport, IDisposable
     {
         if (_disposed)
             return;
-        global::Steamworks.SteamNetworking.OnP2PSessionRequest -= HandleSessionRequest;
+        _sessionRequest.Dispose();
         _disposed = true;
     }
 
-    private void HandleSessionRequest(global::Steamworks.SteamId peer)
+    private void HandleSessionRequest(P2PSessionRequest_t request)
     {
-        if (_isAllowedPeer(peer))
-            global::Steamworks.SteamNetworking.AcceptP2PSessionWithUser(peer);
+        if (_isAllowedPeer(request.m_steamIDRemote.m_SteamID))
+            SteamNetworking.AcceptP2PSessionWithUser(request.m_steamIDRemote);
     }
 
     private void ThrowIfDisposed()

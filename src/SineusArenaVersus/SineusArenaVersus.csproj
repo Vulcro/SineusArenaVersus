@@ -34,17 +34,13 @@
       <HintPath>$(GameDir)\SineusArena_Data\Managed\Assembly-CSharp.dll</HintPath>
       <Private>false</Private>
     </Reference>
+    <Reference Include="com.rlabrecque.steamworks.net">
+      <HintPath>$(GameDir)\SineusArena_Data\Managed\com.rlabrecque.steamworks.net.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
   </ItemGroup>
   <ItemGroup>
-    <PackageReference Include="Facepunch.Steamworks" Version="2.3.3"
-                      GeneratePathProperty="true"
-                      PrivateAssets="all" />
     <PackageReference Include="System.Text.Json" Version="8.0.5" />
-  </ItemGroup>
-  <ItemGroup>
-    <None Include="$(PkgFacepunch_Steamworks)\content\steam_api64.dll"
-          Link="steam_api64.dll"
-          CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
   <ItemGroup>
     <EmbeddedResource Include="Catalog\catalog.json" />
@@ -53,15 +49,23 @@
     <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleTo">
       <_Parameter1>SineusArenaVersus.Tests</_Parameter1>
     </AssemblyAttribute>
+    <!-- Thunderstore: https://wiki.thunderstore.io/llms-and-ai-generated-files -->
+    <AssemblyMetadata Include="AI_Assisted_Creation" Value="This assembly was partially or fully created with the assistance of Generative AI (e.g., Code Suggestions, Refactoring, Documentation Generation)." />
+    <AssemblyMetadata Include="AI_Model_Vendor" Value="Cursor/Composer" />
   </ItemGroup>
   <Target Name="CopyToProfile" AfterTargets="Build">
     <MakeDir Directories="$(BepInExProfile)\BepInEx\plugins\Fowks-SineusArenaVersus" />
     <Copy SourceFiles="$(TargetPath);@(ReferenceCopyLocalPaths)"
           DestinationFolder="$(BepInExProfile)\BepInEx\plugins\Fowks-SineusArenaVersus"
           SkipUnchangedFiles="true" />
-    <Copy SourceFiles="$(TargetDir)steam_api64.dll"
-          DestinationFolder="$(BepInExProfile)\BepInEx\plugins\Fowks-SineusArenaVersus"
-          SkipUnchangedFiles="true"
-          Condition="Exists('$(TargetDir)steam_api64.dll')" />
+    <!-- Facepunch steam_api64 must not remain: it breaks SteamAPI_Init entry points. -->
+    <Delete Files="$(BepInExProfile)\BepInEx\plugins\Fowks-SineusArenaVersus\steam_api64.dll"
+            Condition="Exists('$(BepInExProfile)\BepInEx\plugins\Fowks-SineusArenaVersus\steam_api64.dll')"
+            ContinueOnError="true" />
+    <Delete Files="$(BepInExProfile)\BepInEx\plugins\Fowks-SineusArenaVersus\Facepunch.Steamworks.Win64.dll"
+            Condition="Exists('$(BepInExProfile)\BepInEx\plugins\Fowks-SineusArenaVersus\Facepunch.Steamworks.Win64.dll')"
+            ContinueOnError="true" />
+    <Warning Text="Close SineusArena.exe to remove obsolete Facepunch steam_api64.dll from the plugin folder."
+             Condition="Exists('$(BepInExProfile)\BepInEx\plugins\Fowks-SineusArenaVersus\steam_api64.dll')" />
   </Target>
 </Project>

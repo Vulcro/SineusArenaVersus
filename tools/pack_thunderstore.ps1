@@ -18,10 +18,8 @@ New-Item -ItemType Directory -Force -Path "$out/$pluginDir" | Out-Null
 Copy-Item thunderstore/manifest.json, thunderstore/README.md, thunderstore/icon.png $out
 Copy-Item "$buildDir/SineusArenaVersus.dll" "$out/$pluginDir/"
 
-# Runtime deps — do NOT ship steam_api64.dll (Valve redistributable / auto-mod risk).
-# The game already loads Steam; Facepunch attaches to the existing client.
+# Managed deps only — Steamworks.NET + steam_api64 come from the game install.
 $runtimeDlls = @(
-    "Facepunch.Steamworks.Win64.dll",
     "System.Text.Json.dll",
     "System.Text.Encodings.Web.dll",
     "System.Memory.dll",
@@ -41,12 +39,10 @@ foreach ($dll in $runtimeDlls) {
     }
 }
 
-# Zip root must contain manifest/README/icon (not a nested folder).
 if (Test-Path $zip) { Remove-Item $zip -Force }
 Push-Location $out
 Compress-Archive -Path @("manifest.json", "README.md", "icon.png", "BepInEx") -DestinationPath (Join-Path (Get-Location) "..\Fowks-SineusArenaVersus-$version.zip") -Force
 Pop-Location
-# Normalize path (Compress wrote to dist/)
 $zipPath = (Resolve-Path "dist/Fowks-SineusArenaVersus-$version.zip").Path
 Write-Host "Packed: $zipPath"
 Get-ChildItem $zipPath | Format-List Name, Length, LastWriteTime

@@ -20,7 +20,7 @@ public sealed class VersusPlugin : BaseUnityPlugin
 {
     public const string PluginGuid = "Fowks.SineusArenaVersus";
     public const string PluginName = "Sineus Arena Versus";
-    public const string PluginVersion = "0.1.2";
+    public const string PluginVersion = "0.1.6";
 
     internal static VersusPlugin Instance { get; private set; } = null!;
     internal static ManualLogSource Log => Instance.Logger;
@@ -64,7 +64,7 @@ public sealed class VersusPlugin : BaseUnityPlugin
     }
 
     /// <summary>
-    /// Preloads the game's steam_api64.dll then inits Facepunch. Safe to call repeatedly.
+    /// Attaches to the game's Steamworks.NET session. Safe to call repeatedly.
     /// </summary>
     public bool TryEnsureSteam()
     {
@@ -73,12 +73,8 @@ public sealed class VersusPlugin : BaseUnityPlugin
         if (_steam is null)
             return false;
 
-        SteamNativeLoader.TryEnsureLoaded(message => Logger.LogInfo(message));
         if (!_steam.Initialize())
-        {
-            Logger.LogWarning("Steam unavailable; Friends Versus is disabled until Steam attaches.");
             return false;
-        }
 
         ActiveLobby = new VersusLobby(
             () => VersusConfig.MaxPlayers.Value,
@@ -112,6 +108,10 @@ public sealed class VersusPlugin : BaseUnityPlugin
 
     private void Update()
     {
+        // Heathen/SteamTools often finishes after plugin Start — keep trying until attached.
+        if (ActiveLobby is null)
+            TryEnsureSteam();
+
         _steam?.RunCallbacks();
         _net?.Pump(Time.deltaTime);
 
@@ -193,7 +193,7 @@ public sealed class VersusPlugin : BaseUnityPlugin
         _transport?.Dispose();
         ActiveMatch?.Dispose();
 
-        var localPeerId = (ulong)Steamworks.SteamClient.SteamId;
+        var localPeerId = SteamBootstrap.LocalSteamId();
         var match = CreateMatch(localPeerId);
         _transport = new SteamP2PTransport(ActiveLobby.ContainsPeer);
         _net = new VersusNet(

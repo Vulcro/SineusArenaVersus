@@ -12,11 +12,13 @@ public sealed class VersusMenu : MonoBehaviour
     private const float PanelWidth = 360f;
     private const float PanelHeight = 420f;
     private const float PanelMargin = 20f;
+    private const int WindowId = 0x56525331; // VRS1
 
     private Func<VersusLobby?>? _getLobby;
     private Func<VersusMatch?>? _getMatch;
     private Func<bool>? _ensureSteam;
     private VersusHud? _hud;
+    private Rect _windowRect = new(PanelMargin, PanelMargin, PanelWidth, PanelHeight);
     private bool _isOpen;
     private bool _operationPending;
     private string? _error;
@@ -71,14 +73,14 @@ public sealed class VersusMenu : MonoBehaviour
         if (match is not null && match.State is not (VersusMatchState.Idle or VersusMatchState.LobbyBound))
             return;
 
-        var rect = new Rect(
-            PanelMargin,
-            PanelMargin,
-            PanelWidth,
-            Math.Min(PanelHeight, Screen.height - PanelMargin * 2f));
-        GUILayout.BeginArea(rect, "Versus", GUI.skin.window);
+        _windowRect.width = PanelWidth;
+        _windowRect.height = Math.Min(PanelHeight, Screen.height - PanelMargin * 2f);
+        _windowRect = VersusImguiWindow.Draw(WindowId, _windowRect, DrawWindow, "Versus");
+    }
+
+    private void DrawWindow(int id)
+    {
         DrawLobbyPanel(_getLobby?.Invoke());
-        GUILayout.EndArea();
     }
 
     private void DrawLobbyPanel(VersusLobby? lobby)
@@ -86,7 +88,7 @@ public sealed class VersusMenu : MonoBehaviour
         if (lobby is null)
         {
             GUILayout.Label("Steam is unavailable.");
-            GUILayout.Label("Launch the game through Steam / TMM (Steam).");
+            GUILayout.Label("Wait for lobby Steam init, then Retry.");
             if (GUILayout.Button("Retry Steam"))
             {
                 _error = null;

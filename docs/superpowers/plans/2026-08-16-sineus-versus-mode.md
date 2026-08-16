@@ -617,7 +617,7 @@ Spec success criteria 1–5 on 2 players.
 {
   "name": "SineusArenaVersus",
   "version_number": "0.1.0",
-  "website_url": "https://github.com/Fowks/SineusArenaVersus",
+  "website_url": "https://github.com/DocFowks/SineusArenaVersus",
   "description": "Versus mode: independent solo arenas, VP monster sends, last stronghold standing.",
   "dependencies": [
     "BepInEx-BepInExPack-5.4.2305"

@@ -11,7 +11,7 @@ BepInEx mod for **Sineus Arena Survivors**: parallel solo arenas, VP economy, mo
 ## How to play
 
 - Press **F8** (configurable) to open the Versus menu.
-- **Host** a match or **Join** via Steam Friends invite (2–4 players).
+- **Host** a match or **Join** via Steam Friends invite (2-4 players).
 - Each player runs their own solo Sineus run; versus state syncs over Steam P2P.
 - Earn **VP** from kills and passive income, spend VP in the shop to send monster packs at one rival.
 - **Last stronghold standing wins.**
@@ -39,7 +39,7 @@ Edit `BepInEx/config/Fowks.SineusArenaVersus.cfg` after first run.
 | `PassiveIntervalSeconds` | 10 | Passive income tick |
 | `PassiveBase` | 2 | VP per passive tick |
 | `PassivePerSuccessfulSend` | 1 | Extra VP/tick per send |
-| `MaxPlayers` | 4 | 2–4 |
+| `MaxPlayers` | 4 | 2-4 |
 | `OpenVersusMenuKey` | F8 | Menu / HUD toggle |
 | `InjectRadius` | 15 | Enemy spawn radius |
 | `CatalogOverridePath` | (empty) | Optional custom catalog.json |
@@ -50,7 +50,11 @@ Debug keys under `[Debug]` for offline testing and manual inject (see config com
 
 While a Versus match is active, **solo pause is disabled** (same idea as co-op): ESC / buff / building menus can open, but the arena clock keeps running so peers stay in sync.
 
-## Known limitations (v0.1.1)
+## AI disclosure
+
+This package was created with significant assistance from generative AI / LLM agent tools (**Cursor Composer**). The maintainer reviews and tests changes before release. Disclosure follows [Thunderstore LLM / AI-generated files policy](https://wiki.thunderstore.io/llms-and-ai-generated-files).
+
+## Known limitations (v0.1.x)
 
 - No SubViewport / mini arena spectate on rival cards yet (config stub only).
 - Independent match seeds per client (no shared seed).
@@ -60,14 +64,25 @@ While a Versus match is active, **solo pause is disabled** (same idea as co-op):
 
 ## Changelog
 
+### 0.1.6
+- Point website / source links at https://github.com/DocFowks/SineusArenaVersus
+
+### 0.1.5
+- Declare AI-assisted creation in README and assembly metadata (Thunderstore policy)
+
+### 0.1.4
+- Attach to the game's Steamworks.NET / Heathen session (do not gate on `IsSteamRunning`)
+- Draggable opaque Versus window
+- Package icon for Thunderstore listing
+
 ### 0.1.1
 - Disable pause during Versus (menus without `timeScale` freeze)
 - Point `website_url` at the public GitHub repo
-- Stop shipping `steam_api64.dll` (use the game’s Steam runtime)
+- Stop shipping `steam_api64.dll` (use the game's Steam runtime)
 
 ### 0.1.0
 - Initial Versus V1: lobby, VP economy, sends, HUD, Thunderstore package
 
 ## Links
 
-- Source: https://github.com/Vulcro/SineusArenaVersus
+- Source: https://github.com/DocFowks/SineusArenaVersus

@@ -1,5 +1,6 @@
 using System;
 using SineusArenaVersus.Match;
+using SineusArenaVersus.Steam;
 using Steamworks;
 using UnityEngine;
 
@@ -35,10 +36,11 @@ public static class RivalCardView
     {
         try
         {
-            if (SteamClient.IsValid)
+            if (SteamSession.IsAttached())
             {
-                var name = new Friend(peerId).Name;
-                if (!string.IsNullOrWhiteSpace(name))
+                var name = SteamFriends.GetFriendPersonaName(new CSteamID(peerId));
+                if (!string.IsNullOrWhiteSpace(name) &&
+                    !string.Equals(name, "[unknown]", StringComparison.OrdinalIgnoreCase))
                     return name;
             }
         }
