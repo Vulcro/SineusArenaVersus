@@ -43,7 +43,7 @@ public sealed class VersusMatchTests
     }
 
     [Fact]
-    public void Refund_restores_all_local_purchases_for_dead_target()
+    public void Wave_refunds_local_purchase_when_target_died_before_flush()
     {
         var economy = FundedEconomy();
         using var match = CreateMatch(economy);
@@ -52,9 +52,42 @@ public sealed class VersusMatchTests
         Assert.True(match.TryQueueSend(RivalPeer, "swarm"));
 
         match.OnStrongholdDown(RivalPeer);
-        match.OnRefund(RivalPeer);
+        match.OnWaveTick(new WaveTickMsg(1, 20f));
 
         Assert.Equal(15, economy.Vp);
+        Assert.Empty(match.IncomingQueue);
+    }
+
+    [Fact]
+    public void Wave_settles_local_send_to_living_remote_target()
+    {
+        var economy = FundedEconomy();
+        using var match = CreateMatch(economy, (_, _) => throw new Xunit.Sdk.XunitException("Remote send must not inject locally."));
+        match.QueueSendRequested += match.OnQueueSendValidated;
+        match.StartMatch(new[] { LocalPeer, RivalPeer }, isHost: true);
+        Assert.True(match.TryQueueSend(RivalPeer, "swarm"));
+
+        match.OnWaveTick(new WaveTickMsg(1, 20f));
+
+        Assert.Equal(1, economy.SuccessfulSends);
+        Assert.Empty(match.IncomingQueue);
+        match.OnRefund(RivalPeer);
+        Assert.Equal(5, economy.Vp);
+    }
+
+    [Fact]
+    public void Wave_requests_remote_refund_when_target_died_after_acceptance()
+    {
+        using var match = CreateMatch(FundedEconomy());
+        (ulong sender, ulong target)? refund = null;
+        match.RefundRequested += (sender, target) => refund = (sender, target);
+        match.StartMatch(new[] { LocalPeer, RivalPeer, OtherPeer }, isHost: true);
+        match.OnQueueSendValidated(new QueueSendMsg(OtherPeer, RivalPeer, "swarm", 8));
+        match.OnStrongholdDown(RivalPeer);
+
+        match.OnWaveTick(new WaveTickMsg(1, 20f));
+
+        Assert.Equal((OtherPeer, RivalPeer), refund);
         Assert.Empty(match.IncomingQueue);
     }
 
@@ -98,6 +131,38 @@ public sealed class VersusMatchTests
 
         Assert.Equal(1, emittedWave);
         Assert.Equal(1, match.WaveIndex);
+    }
+
+    [Fact]
+    public void Eliminated_host_continues_wave_clock_without_passive_income()
+    {
+        var economy = FundedEconomy();
+        using var match = CreateMatch(economy, waveInterval: () => 2f);
+        match.StartMatch(new[] { LocalPeer, RivalPeer, OtherPeer }, isHost: true);
+        match.OnStrongholdDown(LocalPeer);
+
+        match.Tick(10f);
+
+        Assert.Equal(VersusMatchState.Eliminated, match.State);
+        Assert.Equal(5, match.WaveIndex);
+        Assert.Equal(15, economy.Vp);
+    }
+
+    [Fact]
+    public void Host_exposes_only_accepted_sends_for_relay()
+    {
+        using var match = CreateMatch(FundedEconomy());
+        QueueSendMsg? relayed = null;
+        match.SendAcceptedForRelay += send => relayed = send;
+        match.StartMatch(new[] { LocalPeer, RivalPeer }, isHost: true);
+
+        match.OnQueueSendValidated(new QueueSendMsg(RivalPeer, LocalPeer, "swarm", 7));
+        Assert.Null(relayed);
+
+        var accepted = new QueueSendMsg(RivalPeer, LocalPeer, "swarm", 8);
+        match.OnQueueSendValidated(accepted);
+
+        Assert.Equal(accepted, relayed);
     }
 
     private static VersusEconomy FundedEconomy()

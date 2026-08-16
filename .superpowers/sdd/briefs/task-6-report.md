@@ -9,3 +9,12 @@ Integration: game events drive VP/elimination; plugin Update ticks only an activ
 Tests: `rtk test dotnet test tests/SineusArenaVersus.Tests/SineusArenaVersus.Tests.csproj` — 30 passed.
 Build: `rtk dotnet build SineusArenaVersus.sln -c Release --no-restore` — 0 warnings/errors.
 Concern: Summer Engine was unavailable, so in-game offline smoke testing was not performed.
+
+## Review fixes — 2026-08-16
+
+- Wave flush now settles every accepted send, including locally originated sends to living remote targets.
+- Pending sends retain catalog cost; dead-target flushes refund locally or emit `RefundRequested(sender, target)`.
+- Eliminated hosts keep accepting/relaying sends and advancing wave ticks while passive income/shop remain disabled.
+- Task 7 relay boundary: host emits `SendAcceptedForRelay` only after validating and enqueueing a send.
+- Regression tests cover remote settlement, dead-target refunds, eliminated-host ticking, and accepted-send relay.
+- Verification: full suite 34 passed; Release build completed with 0 warnings/errors.

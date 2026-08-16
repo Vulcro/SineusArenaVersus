@@ -27,8 +27,8 @@ public sealed class VersusMatch : IDisposable
     private readonly Func<float> _waveInterval;
     private readonly bool _redirectTargetsToLocal;
     private readonly Dictionary<ulong, PeerState> _peers = new();
-    private readonly List<QueueSendMsg> _pending = new();
-    private readonly List<QueueSendMsg> _localPurchases = new();
+    private readonly List<PendingSend> _pending = new();
+    private readonly List<PendingSend> _localPurchases = new();
     private float _passiveTimer;
     private float _waveTimer;
     private float _hostTime;
@@ -54,6 +54,7 @@ public sealed class VersusMatch : IDisposable
     }
 
     public event Action<QueueSendMsg>? QueueSendRequested;
+    public event Action<QueueSendMsg>? SendAcceptedForRelay;
     public event Action<WaveTickMsg>? WaveTickRequested;
     public event Action<ulong, ulong>? RefundRequested;
     public event Action<ulong>? StrongholdDownRequested;
@@ -64,11 +65,14 @@ public sealed class VersusMatch : IDisposable
     public bool ShopEnabled => State == VersusMatchState.InMatch;
     public int WaveIndex { get; private set; }
     public IReadOnlyDictionary<ulong, PeerState> Peers => _peers;
-    public IReadOnlyList<QueueSendMsg> IncomingQueue => _pending;
+    public IReadOnlyList<QueueSendMsg> IncomingQueue => _pending.Select(pending => pending.Message).ToArray();
     public IReadOnlyDictionary<string, int> IncomingPreview => _pending
         .Where(IsTargetingLocal)
-        .GroupBy(send => send.CatalogId, StringComparer.OrdinalIgnoreCase)
-        .ToDictionary(group => group.Key, group => group.Sum(send => send.Count), StringComparer.OrdinalIgnoreCase);
+        .GroupBy(pending => pending.Message.CatalogId, StringComparer.OrdinalIgnoreCase)
+        .ToDictionary(
+            group => group.Key,
+            group => group.Sum(pending => pending.Message.Count),
+            StringComparer.OrdinalIgnoreCase);
 
     public void StartMatch(IReadOnlyList<ulong> peers, bool isHost)
     {
@@ -100,12 +104,15 @@ public sealed class VersusMatch : IDisposable
     {
         if (dt < 0f)
             throw new ArgumentOutOfRangeException(nameof(dt));
-        if (State != VersusMatchState.InMatch)
+        if (!IsActive)
             return;
 
         _hostTime += dt;
-        _passiveTimer += dt;
-        TickPassiveIncome();
+        if (State == VersusMatchState.InMatch)
+        {
+            _passiveTimer += dt;
+            TickPassiveIncome();
+        }
 
         if (!_isHost)
             return;
@@ -131,7 +138,7 @@ public sealed class VersusMatch : IDisposable
             return false;
 
         var send = new QueueSendMsg(_localPeerId, target, offering.Id, offering.Count);
-        _localPurchases.Add(send);
+        _localPurchases.Add(new PendingSend(send, offering.Cost));
         QueueSendRequested?.Invoke(send);
         return true;
     }
@@ -142,22 +149,35 @@ public sealed class VersusMatch : IDisposable
             return;
 
         WaveIndex = tick.WaveIndex;
-        var localSends = _pending.Where(IsTargetingLocal).ToArray();
-        foreach (var send in localSends)
+        foreach (var pending in _pending.ToArray())
         {
-            if (_catalog.TryGet(send.CatalogId, out var offering) &&
-                _injectPack(offering.EnemyKey, send.Count) &&
-                send.From == _localPeerId)
-                _economy.RegisterSuccessfulSend();
+            var send = pending.Message;
+            if (!_peers.TryGetValue(send.To, out var target) || !target.IsAlive)
+            {
+                RefundPending(pending);
+                _pending.Remove(pending);
+                continue;
+            }
 
-            _pending.Remove(send);
-            _localPurchases.Remove(send);
+            var injectSucceeded = true;
+            if (IsTargetingLocal(pending))
+                injectSucceeded = _catalog.TryGet(send.CatalogId, out var offering) &&
+                                  _injectPack(offering.EnemyKey, send.Count);
+
+            if (send.From == _localPeerId)
+            {
+                if (injectSucceeded)
+                    _economy.RegisterSuccessfulSend();
+                RemoveLocalPurchase(pending);
+            }
+
+            _pending.Remove(pending);
         }
     }
 
     public void OnQueueSendValidated(QueueSendMsg send)
     {
-        if (State != VersusMatchState.InMatch ||
+        if (!IsActive ||
             !_catalog.TryGet(send.CatalogId, out var offering) ||
             offering.Count != send.Count ||
             !_peers.ContainsKey(send.From) ||
@@ -170,17 +190,20 @@ public sealed class VersusMatch : IDisposable
             return;
         }
 
-        _pending.Add(send);
+        _pending.Add(new PendingSend(send, offering.Cost));
+        if (_isHost)
+            SendAcceptedForRelay?.Invoke(send);
     }
 
     public void OnRefund(ulong targetPeerId)
     {
-        foreach (var purchase in _localPurchases.Where(send => send.To == targetPeerId).ToArray())
+        foreach (var purchase in _localPurchases
+                     .Where(pending => pending.Message.To == targetPeerId)
+                     .ToArray())
         {
-            if (_catalog.TryGet(purchase.CatalogId, out var offering))
-                _economy.Refund(offering.Cost);
+            _economy.Refund(purchase.Cost);
             _localPurchases.Remove(purchase);
-            _pending.Remove(purchase);
+            _pending.RemoveAll(pending => pending.Message.Equals(purchase.Message));
         }
     }
 
@@ -213,8 +236,29 @@ public sealed class VersusMatch : IDisposable
         GameFacades.IsActive = false;
     }
 
-    private bool IsTargetingLocal(QueueSendMsg send) =>
-        send.To == _localPeerId || _redirectTargetsToLocal;
+    private bool IsTargetingLocal(PendingSend pending) =>
+        pending.Message.To == _localPeerId || _redirectTargetsToLocal;
+
+    private void RefundPending(PendingSend pending)
+    {
+        if (pending.Message.From == _localPeerId)
+        {
+            _economy.Refund(pending.Cost);
+            RemoveLocalPurchase(pending);
+            return;
+        }
+
+        if (_isHost)
+            RefundRequested?.Invoke(pending.Message.From, pending.Message.To);
+    }
+
+    private void RemoveLocalPurchase(PendingSend settled)
+    {
+        var purchase = _localPurchases.FirstOrDefault(candidate =>
+            candidate.Message.Equals(settled.Message));
+        if (purchase is not null)
+            _localPurchases.Remove(purchase);
+    }
 
     private void TickPassiveIncome()
     {
@@ -254,5 +298,17 @@ public sealed class VersusMatch : IDisposable
             return;
         StrongholdDownRequested?.Invoke(_localPeerId);
         OnStrongholdDown(_localPeerId);
+    }
+
+    private sealed class PendingSend
+    {
+        public PendingSend(QueueSendMsg message, int cost)
+        {
+            Message = message;
+            Cost = cost;
+        }
+
+        public QueueSendMsg Message { get; }
+        public int Cost { get; }
     }
 }
