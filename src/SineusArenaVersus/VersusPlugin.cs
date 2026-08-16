@@ -4,6 +4,7 @@ using HarmonyLib;
 using SineusArenaVersus.Catalog;
 using SineusArenaVersus.Economy;
 using SineusArenaVersus.Game;
+using SineusArenaVersus.Hud;
 using SineusArenaVersus.Lobby;
 using SineusArenaVersus.Match;
 using SineusArenaVersus.Net;
@@ -28,11 +29,14 @@ public sealed class VersusPlugin : BaseUnityPlugin
     private SteamBootstrap? _steam;
     private SteamP2PTransport? _transport;
     private VersusNet? _net;
+    private VersusHud? _hud;
 
     private void Awake()
     {
         Instance = this;
         VersusConfig.Bind(Config);
+        _hud = gameObject.AddComponent<VersusHud>();
+        _hud.LeaveMatchRequested += LeaveActiveMatch;
         _harmony = new Harmony(PluginGuid);
         _harmony.PatchAll();
         _steam = new SteamBootstrap(exception => Logger.LogError($"Steam error: {exception}"));
@@ -52,6 +56,7 @@ public sealed class VersusPlugin : BaseUnityPlugin
 
         if (VersusConfig.DebugOfflineVersus.Value)
             StartOfflineMatch();
+        SyncHudBinding();
         Logger.LogInfo($"{PluginName} {PluginVersion} loaded");
     }
 
@@ -64,6 +69,7 @@ public sealed class VersusPlugin : BaseUnityPlugin
         _steam?.Dispose();
         ActiveLobby = null;
         ActiveMatch = null;
+        _hud?.Bind(null);
         _harmony?.UnpatchSelf();
     }
 
@@ -107,7 +113,21 @@ public sealed class VersusPlugin : BaseUnityPlugin
         match.QueueSendRequested += match.OnQueueSendValidated;
         match.StartMatch(new[] { localPeerId, rivalPeerId }, isHost: true);
         ActiveMatch = match;
+        SyncHudBinding();
     }
+
+    internal static void LeaveActiveMatch()
+    {
+        Instance._net?.Dispose();
+        Instance._transport?.Dispose();
+        ActiveMatch?.Dispose();
+        Instance._net = null;
+        Instance._transport = null;
+        ActiveMatch = null;
+        Instance.SyncHudBinding();
+    }
+
+    private void SyncHudBinding() => _hud?.Bind(ActiveMatch);
 
     private void BindSteamSession()
     {
@@ -131,6 +151,7 @@ public sealed class VersusPlugin : BaseUnityPlugin
                 GameFacades.IsLocalKeepAlive()));
         _net.PacketRejected += exception => Logger.LogWarning($"Rejected Versus packet: {exception.Message}");
         ActiveMatch = match;
+        SyncHudBinding();
     }
 
     private static VersusMatch CreateMatch(ulong localPeerId)

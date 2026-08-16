@@ -160,7 +160,9 @@ public sealed class VersusNet : IDisposable
                 break;
             case VersusOpcode.Winner:
                 RequireHost(packet.SenderId, opcode);
-                WinnerReceived?.Invoke(VersusSerializer.DeserializePeer(packet.Payload).PeerId);
+                var winner = VersusSerializer.DeserializePeer(packet.Payload).PeerId;
+                _match.OnWinner(winner);
+                WinnerReceived?.Invoke(winner);
                 break;
             case VersusOpcode.Refund:
                 RequireHost(packet.SenderId, opcode);

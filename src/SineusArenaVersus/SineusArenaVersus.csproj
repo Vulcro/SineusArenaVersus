@@ -26,6 +26,10 @@
       <HintPath>$(GameDir)\SineusArena_Data\Managed\UnityEngine.InputLegacyModule.dll</HintPath>
       <Private>false</Private>
     </Reference>
+    <Reference Include="UnityEngine.IMGUIModule">
+      <HintPath>$(GameDir)\SineusArena_Data\Managed\UnityEngine.IMGUIModule.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
     <Reference Include="Assembly-CSharp">
       <HintPath>$(GameDir)\SineusArena_Data\Managed\Assembly-CSharp.dll</HintPath>
       <Private>false</Private>

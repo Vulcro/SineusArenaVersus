@@ -63,7 +63,14 @@ public sealed class VersusMatch : IDisposable
     public VersusMatchState State { get; private set; }
     public bool IsActive => State is VersusMatchState.InMatch or VersusMatchState.Eliminated;
     public bool ShopEnabled => State == VersusMatchState.InMatch;
+    public ulong LocalPeerId => _localPeerId;
+    public bool IsHost => _isHost;
+    public VersusEconomy Economy => _economy;
+    public VersusCatalog Catalog => _catalog;
     public int WaveIndex { get; private set; }
+    public float WaveIntervalSeconds => RequirePositiveInterval(_waveInterval(), "wave");
+    public float WaveSecondsRemaining => Math.Max(0f, WaveIntervalSeconds - _waveTimer);
+    public ulong? WinnerPeerId { get; private set; }
     public IReadOnlyDictionary<ulong, PeerState> Peers => _peers;
     public IReadOnlyList<QueueSendMsg> IncomingQueue => _pending.Select(pending => pending.Message).ToArray();
     public IReadOnlyDictionary<string, int> IncomingPreview => _pending
@@ -94,6 +101,7 @@ public sealed class VersusMatch : IDisposable
         _waveTimer = 0f;
         _hostTime = 0f;
         WaveIndex = 0;
+        WinnerPeerId = null;
         _isHost = isHost;
         AttachGameEvents();
         State = VersusMatchState.InMatch;
@@ -114,11 +122,13 @@ public sealed class VersusMatch : IDisposable
             TickPassiveIncome();
         }
 
+        if (IsActive)
+            _waveTimer += dt;
+
         if (!_isHost)
             return;
 
-        _waveTimer += dt;
-        var interval = RequirePositiveInterval(_waveInterval(), "wave");
+        var interval = WaveIntervalSeconds;
         while (_waveTimer >= interval)
         {
             _waveTimer -= interval;
@@ -149,6 +159,11 @@ public sealed class VersusMatch : IDisposable
             return;
 
         WaveIndex = tick.WaveIndex;
+        if (!_isHost)
+        {
+            _waveTimer = 0f;
+            _hostTime = tick.HostTime;
+        }
         foreach (var pending in _pending.ToArray())
         {
             var send = pending.Message;
@@ -221,11 +236,16 @@ public sealed class VersusMatch : IDisposable
 
         var survivors = _peers.Values.Where(candidate => candidate.IsAlive).ToArray();
         if (survivors.Length == 1)
-        {
-            State = VersusMatchState.Ended;
-            GameFacades.IsActive = false;
-            WinnerDetermined?.Invoke(survivors[0].PeerId);
-        }
+            EndMatch(survivors[0].PeerId);
+    }
+
+    public void OnWinner(ulong peerId)
+    {
+        if (State == VersusMatchState.Ended)
+            return;
+        if (!_peers.ContainsKey(peerId))
+            return;
+        EndMatch(peerId);
     }
 
     public void OnRivalSnap(RivalSnapMsg snapshot)
@@ -247,6 +267,14 @@ public sealed class VersusMatch : IDisposable
         GameFacades.LocalKeepDestroyed -= HandleLocalKeepDestroyed;
         _eventsAttached = false;
         GameFacades.IsActive = false;
+    }
+
+    private void EndMatch(ulong winnerPeerId)
+    {
+        State = VersusMatchState.Ended;
+        WinnerPeerId = winnerPeerId;
+        GameFacades.IsActive = false;
+        WinnerDetermined?.Invoke(winnerPeerId);
     }
 
     private bool IsTargetingLocal(PendingSend pending) =>
