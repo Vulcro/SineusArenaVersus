@@ -20,7 +20,7 @@ public sealed class VersusPlugin : BaseUnityPlugin
 {
     public const string PluginGuid = "Fowks.SineusArenaVersus";
     public const string PluginName = "Sineus Arena Versus";
-    public const string PluginVersion = "0.1.7";
+    public const string PluginVersion = "0.1.8";
 
     internal static VersusPlugin Instance { get; private set; } = null!;
     internal static ManualLogSource Log => Instance.Logger;
@@ -177,7 +177,8 @@ public sealed class VersusPlugin : BaseUnityPlugin
         try
         {
             // Solo boot / map load may leave the shared Steam lobby while P2P peers stay valid.
-            if (ActiveMatch?.IsActive == true)
+            if (ActiveMatch?.IsActive == true ||
+                ActiveMatch?.State == VersusMatchState.LobbyBound)
                 return;
 
             _net?.HandlePeerDisconnected(peerId);
@@ -191,6 +192,10 @@ public sealed class VersusPlugin : BaseUnityPlugin
     private void BindSteamSession()
     {
         if (ActiveLobby is null || !ActiveLobby.HasLobby)
+            return;
+        // Do not tear down an in-progress Versus match when lobby membership churns during solo boot.
+        if (ActiveMatch is not null &&
+            ActiveMatch.State is not (VersusMatchState.Idle or VersusMatchState.Ended))
             return;
 
         _net?.Dispose();
@@ -232,6 +237,8 @@ public sealed class VersusPlugin : BaseUnityPlugin
             localPeerId,
             economy,
             VersusCatalog.Load(),
-            soloRunLauncher: new ReflectionSoloRunLauncher(message => Log.LogError(message)));
+            soloRunLauncher: new ReflectionSoloRunLauncher(
+                message => Log.LogError(message),
+                detachVersusLobby: () => ActiveLobby?.DetachLobbyForMatch()));
     }
 }

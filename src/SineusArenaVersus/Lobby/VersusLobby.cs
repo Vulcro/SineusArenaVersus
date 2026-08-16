@@ -135,6 +135,19 @@ public sealed class VersusLobby : IDisposable
         return false;
     }
 
+    /// <summary>
+    /// Leaves the Steam lobby without disposing callbacks or firing SessionChanged.
+    /// Required so QuickStart cannot treat Versus friends as co-op NGO clients.
+    /// </summary>
+    public void DetachLobbyForMatch()
+    {
+        if (!HasLobby)
+            return;
+
+        SteamMatchmaking.LeaveLobby(_lobbyId!.Value);
+        _lobbyId = null;
+    }
+
     public void Dispose()
     {
         if (_disposed)

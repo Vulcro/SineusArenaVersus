@@ -73,6 +73,7 @@ public sealed class VersusMenu : MonoBehaviour
         if (match is not null && match.State is not (VersusMatchState.Idle or VersusMatchState.LobbyBound))
             return;
 
+        VersusCursor.UnlockForUi();
         _windowRect.width = PanelWidth;
         _windowRect.height = Math.Min(PanelHeight, Screen.height - PanelMargin * 2f);
         _windowRect = VersusImguiWindow.Draw(WindowId, _windowRect, DrawWindow, "Versus");

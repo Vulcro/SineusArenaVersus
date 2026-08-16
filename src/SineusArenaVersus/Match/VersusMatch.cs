@@ -87,23 +87,38 @@ public sealed class VersusMatch : IDisposable
             group => group.Sum(pending => pending.Message.Count),
             StringComparer.OrdinalIgnoreCase);
 
+    /// <summary>
+    /// Registers peers for P2P allowlisting before MatchStart is broadcast / solo isolation.
+    /// </summary>
+    public void RegisterPeersForStart(IReadOnlyList<ulong> peers)
+    {
+        if (peers is null)
+            throw new ArgumentNullException(nameof(peers));
+        if (State is not (VersusMatchState.Idle or VersusMatchState.Ended or VersusMatchState.LobbyBound))
+            throw new InvalidOperationException($"Cannot register peers from state {State}.");
+        if (!peers.Contains(_localPeerId))
+            throw new ArgumentException("Peer list must contain the local peer.", nameof(peers));
+
+        _peers.Clear();
+        foreach (var peerId in peers.Distinct())
+            _peers.Add(peerId, new PeerState(peerId));
+        State = VersusMatchState.LobbyBound;
+    }
+
     public bool StartMatch(IReadOnlyList<ulong> peers, bool isHost, float? waveInterval = null)
     {
         if (peers is null)
             throw new ArgumentNullException(nameof(peers));
-        if (State is not (VersusMatchState.Idle or VersusMatchState.Ended))
+        if (State is not (VersusMatchState.Idle or VersusMatchState.Ended or VersusMatchState.LobbyBound))
             throw new InvalidOperationException($"Cannot start a match from state {State}.");
         if (!peers.Contains(_localPeerId))
             throw new ArgumentException("Peer list must contain the local peer.", nameof(peers));
         var resolvedWaveInterval = ResolveWaveInterval(waveInterval);
-        if (!_soloRunLauncher.TryStartSoloRun() && !_soloRunLauncher.IsSoloRunActive())
-            return false;
 
-        State = VersusMatchState.LobbyBound;
+        // Register peers before solo boot so P2P allowlist stays valid after lobby detach.
         _peers.Clear();
         foreach (var peerId in peers.Distinct())
             _peers.Add(peerId, new PeerState(peerId));
-
         _pending.Clear();
         _localPurchases.Clear();
         _peerVp.Clear();
@@ -116,6 +131,15 @@ public sealed class VersusMatch : IDisposable
         WinnerPeerId = null;
         _isHost = isHost;
         _hostWaveInterval = resolvedWaveInterval;
+        State = VersusMatchState.LobbyBound;
+
+        if (!_soloRunLauncher.TryStartSoloRun() && !_soloRunLauncher.IsSoloRunActive())
+        {
+            State = VersusMatchState.Idle;
+            _peers.Clear();
+            return false;
+        }
+
         AttachGameEvents();
         State = VersusMatchState.InMatch;
         GameFacades.IsActive = true;

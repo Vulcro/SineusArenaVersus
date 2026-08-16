@@ -70,15 +70,27 @@ public sealed class VersusNet : IDisposable
         for (var i = 0; i < peers.Count; i++)
             peerArray[i] = peers[i];
 
-        if (!_match.StartMatch(peerArray, isHost: true, waveInterval))
-            return false;
+        var resolvedWave = waveInterval > 0f ? waveInterval : 20f;
+        _match.RegisterPeersForStart(peerArray);
 
-        var packet = VersusSerializer.Serialize(new MatchStartMsg(
-            lobbyId,
-            _match.WaveIntervalSeconds,
-            peerArray));
+        // Notify friends while shared Steam lobby / P2P allowlist still work.
+        var packet = VersusSerializer.Serialize(new MatchStartMsg(lobbyId, resolvedWave, peerArray));
         Broadcast(VersusOpcode.MatchStart, packet, peerArray);
+
+        // In-game: delay solo isolation so MatchStart can flush. Tests run sync (no plugin instance).
+        if (VersusPlugin.Instance is null)
+            return _match.StartMatch(peerArray, isHost: true, resolvedWave);
+
+        VersusPlugin.Instance.StartCoroutine(HostSoloAfterNotify(peerArray, resolvedWave));
         return true;
+    }
+
+    private System.Collections.IEnumerator HostSoloAfterNotify(ulong[] peerArray, float waveInterval)
+    {
+        yield return null;
+        yield return null;
+        if (!_match.StartMatch(peerArray, isHost: true, waveInterval))
+            VersusPlugin.Log.LogError("Versus host solo boot failed after MatchStart broadcast.");
     }
 
     public void Pump(float deltaTime)

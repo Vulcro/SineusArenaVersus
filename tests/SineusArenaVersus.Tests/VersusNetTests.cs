@@ -57,16 +57,13 @@ public sealed class VersusNetTests
     }
 
     [Fact]
-    public void Host_broadcasts_only_after_starting_local_match()
+    public void Host_broadcasts_match_start_then_starts_local_match()
     {
         using var match = CreateMatch(Host);
-        var transport = new FakeTransport(Host)
-        {
-            OnSend = () => Assert.Equal(VersusMatchState.InMatch, match.State)
-        };
+        var transport = new FakeTransport(Host);
         using var net = new VersusNet(match, transport, Host);
 
-        net.StartMatchAsHost(99, new[] { Host, Client }, 20f);
+        Assert.True(net.StartMatchAsHost(99, new[] { Host, Client }, 20f));
 
         Assert.Equal(VersusMatchState.InMatch, match.State);
         var sent = Assert.Single(transport.Sent);
@@ -74,7 +71,7 @@ public sealed class VersusNetTests
     }
 
     [Fact]
-    public void Host_does_not_broadcast_when_solo_launch_fails()
+    public void Host_broadcasts_match_start_even_when_solo_launch_fails()
     {
         using var match = CreateMatch(Host, soloRunLauncher: new FakeSoloRunLauncher(false));
         var transport = new FakeTransport(Host);
@@ -83,7 +80,8 @@ public sealed class VersusNetTests
         Assert.False(net.StartMatchAsHost(99, new[] { Host, Client }, 20f));
 
         Assert.Equal(VersusMatchState.Idle, match.State);
-        Assert.Empty(transport.Sent);
+        var sent = Assert.Single(transport.Sent);
+        AssertSend(sent, Client, VersusOpcode.MatchStart, reliable: true);
     }
 
     [Fact]

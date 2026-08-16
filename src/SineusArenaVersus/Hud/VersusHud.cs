@@ -43,6 +43,7 @@ public sealed class VersusHud : MonoBehaviour
             !_match.IsActive && _match.State != VersusMatchState.Ended)
             return;
 
+        VersusCursor.UnlockForUi();
         DrawRivalStrip();
         DrawSidePanel();
         DrawOverlay();

@@ -1,4 +1,6 @@
 using System;
+using System.Collections;
+using System.Collections.Generic;
 using HarmonyLib;
 using UnityEngine;
 
@@ -11,17 +13,21 @@ public interface ISoloRunLauncher
 }
 
 /// <summary>
-/// Boots a local single-player NGO session. Must NOT call
-/// <c>UILobbySteamController.StartGame()</c> — that uses Steam lobby member count
-/// and starts shared co-op when the Versus lobby has 2+ friends.
+/// Boots an isolated local solo NGO session.
+/// Versus Friends share one Steam lobby, which QuickStart treats as co-op NGO —
+/// we must leave that lobby and drop remote clients before loading the arena.
 /// </summary>
 public sealed class ReflectionSoloRunLauncher : ISoloRunLauncher
 {
     private readonly Action<string> _logError;
+    private readonly Action? _detachVersusLobby;
 
-    public ReflectionSoloRunLauncher(Action<string>? logError = null)
+    public ReflectionSoloRunLauncher(
+        Action<string>? logError = null,
+        Action? detachVersusLobby = null)
     {
         _logError = logError ?? (message => Debug.LogError(message));
+        _detachVersusLobby = detachVersusLobby;
     }
 
     public bool TryStartSoloRun()
@@ -31,7 +37,9 @@ public sealed class ReflectionSoloRunLauncher : ISoloRunLauncher
 
         try
         {
-            // Drop any shared NGO session (previous co-op / lobby host with guests).
+            // 1) Leave shared Steam lobby so QuickStart cannot re-attach the friend as NGO client.
+            _detachVersusLobby?.Invoke();
+            InvokeInstance("UILobbySteamController", "LeaveSteamLobby");
             InvokeInstance("UILobbySteamController", "DisconnectNetworkCompletely");
 
             var quickStartType = AccessTools.TypeByName("QuickStartLobby");
@@ -43,20 +51,29 @@ public sealed class ReflectionSoloRunLauncher : ISoloRunLauncher
                 : AccessTools.Method(quickStartType, "StartAsHost", Type.EmptyTypes);
             if (quickStart is null || startHost is null)
             {
-                _logError("[SineusArenaVersus] QuickStartLobby.StartAsHost unavailable. Start vanilla Solo (alone), then Versus Start.");
+                _logError("[SineusArenaVersus] QuickStartLobby.StartAsHost unavailable.");
                 return false;
             }
 
             startHost.Invoke(quickStart, null);
+            DisconnectRemoteClients();
 
             var mapId = ResolveSelectedMapId();
             if (string.IsNullOrWhiteSpace(mapId))
             {
-                _logError("[SineusArenaVersus] No map selected. Pick a map in the lobby, then Versus Start.");
+                _logError("[SineusArenaVersus] No map selected. Pick a map in the lobby UI, then Start Versus.");
                 return false;
             }
 
-            // Force expectedClients=1 so peers never share one arena.
+            var clientCount = GetConnectedClientCount();
+            if (clientCount != 1)
+            {
+                _logError(
+                    $"[SineusArenaVersus] Solo boot aborted: expected 1 NGO client, found {clientCount}. " +
+                    "Friend must not stay connected to your lobby session — retry Start Versus.");
+                return false;
+            }
+
             var sceneManagerType = AccessTools.TypeByName("ProjectSceneManager");
             var sceneManager = sceneManagerType is null
                 ? null
@@ -69,38 +86,80 @@ public sealed class ReflectionSoloRunLauncher : ISoloRunLauncher
                     new[] { typeof(string), typeof(int) });
             if (sceneManager is null || prepare is null)
             {
-                // Fallback: private deferred load with expectedPlayers = 1 (keeps Versus Steam lobby).
-                var steamUiType = AccessTools.TypeByName("UILobbySteamController");
-                var steamUi = steamUiType is null
-                    ? null
-                    : AccessTools.Property(steamUiType, "I")?.GetValue(null, null);
-                var deferred = steamUiType is null
-                    ? null
-                    : AccessTools.Method(
-                        steamUiType,
-                        "StartDeferredSceneLoad",
-                        new[] { typeof(int), typeof(string) });
-                if (steamUi is null || deferred is null)
-                {
-                    _logError("[SineusArenaVersus] Solo scene load hook unavailable.");
-                    return false;
-                }
-
-                deferred.Invoke(steamUi, new object[] { 1, mapId });
-                return true;
+                _logError("[SineusArenaVersus] ProjectSceneManager.PrepareFirstMissionAfterSync unavailable.");
+                return false;
             }
 
-            prepare.Invoke(sceneManager, new object[] { mapId, 1 });
+            prepare.Invoke(sceneManager, new object[] { mapId!, 1 });
             return true;
         }
         catch (Exception exception)
         {
-            _logError($"[SineusArenaVersus] Solo run launch failed: {exception}. Start vanilla Solo alone, then Versus Start.");
+            _logError($"[SineusArenaVersus] Solo run launch failed: {exception}");
             return false;
         }
     }
 
     public bool IsSoloRunActive() => GameFacades.IsSoloRunActive();
+
+    private static void DisconnectRemoteClients()
+    {
+        var nmType = AccessTools.TypeByName("Unity.Netcode.NetworkManager");
+        var nm = nmType is null
+            ? null
+            : AccessTools.Property(nmType, "Singleton")?.GetValue(null, null);
+        if (nm is null)
+            return;
+
+        var localId = Convert.ToUInt64(
+            AccessTools.Property(nmType, "LocalClientId")?.GetValue(nm, null) ?? 0UL);
+        var idsObj = AccessTools.Property(nmType, "ConnectedClientsIds")?.GetValue(nm, null);
+        if (idsObj is not IEnumerable ids)
+            return;
+
+        var disconnect = AccessTools.Method(nmType, "DisconnectClient", new[] { typeof(ulong) })
+                         ?? AccessTools.Method(nmType, "DisconnectClient", new[] { typeof(ulong), typeof(string) });
+        if (disconnect is null)
+            return;
+
+        var remoteIds = new List<ulong>();
+        foreach (var id in ids)
+        {
+            var clientId = Convert.ToUInt64(id);
+            if (clientId != localId)
+                remoteIds.Add(clientId);
+        }
+
+        foreach (var clientId in remoteIds)
+        {
+            try
+            {
+                if (disconnect.GetParameters().Length == 1)
+                    disconnect.Invoke(nm, new object[] { clientId });
+                else
+                    disconnect.Invoke(nm, new object[] { clientId, "Versus solo isolation" });
+            }
+            catch
+            {
+                // Best-effort; PrepareFirstMission will re-check count.
+            }
+        }
+    }
+
+    private static int GetConnectedClientCount()
+    {
+        var nmType = AccessTools.TypeByName("Unity.Netcode.NetworkManager");
+        var nm = nmType is null
+            ? null
+            : AccessTools.Property(nmType, "Singleton")?.GetValue(null, null);
+        if (nm is null)
+            return 0;
+
+        var list = AccessTools.Property(nmType, "ConnectedClientsList")?.GetValue(nm, null);
+        if (list is ICollection collection)
+            return collection.Count;
+        return 0;
+    }
 
     private static string? ResolveSelectedMapId()
     {
