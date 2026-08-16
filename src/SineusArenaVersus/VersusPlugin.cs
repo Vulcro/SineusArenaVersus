@@ -9,6 +9,7 @@ using SineusArenaVersus.Lobby;
 using SineusArenaVersus.Match;
 using SineusArenaVersus.Net;
 using SineusArenaVersus.Steam;
+using SineusArenaVersus.Ui;
 using UnityEngine;
 
 namespace SineusArenaVersus;
@@ -30,6 +31,7 @@ public sealed class VersusPlugin : BaseUnityPlugin
     private SteamP2PTransport? _transport;
     private VersusNet? _net;
     private VersusHud? _hud;
+    private VersusMenu? _menu;
 
     private void Awake()
     {
@@ -37,6 +39,8 @@ public sealed class VersusPlugin : BaseUnityPlugin
         VersusConfig.Bind(Config);
         _hud = gameObject.AddComponent<VersusHud>();
         _hud.LeaveMatchRequested += LeaveActiveMatch;
+        _menu = gameObject.AddComponent<VersusMenu>();
+        _menu.Initialize(() => ActiveLobby, () => ActiveMatch, _hud);
         _harmony = new Harmony(PluginGuid);
         _harmony.PatchAll();
         _steam = new SteamBootstrap(exception => Logger.LogError($"Steam error: {exception}"));
@@ -47,6 +51,7 @@ public sealed class VersusPlugin : BaseUnityPlugin
                 () => VersusConfig.WaveIntervalSeconds.Value,
                 () => _net);
             ActiveLobby.SessionChanged += BindSteamSession;
+            ActiveLobby.MemberLeft += HandleLobbyMemberLeft;
             ActiveLobby.LobbyError += exception => Logger.LogError($"Lobby error: {exception}");
         }
         else
@@ -64,6 +69,11 @@ public sealed class VersusPlugin : BaseUnityPlugin
     {
         _net?.Dispose();
         _transport?.Dispose();
+        if (ActiveLobby is not null)
+        {
+            ActiveLobby.SessionChanged -= BindSteamSession;
+            ActiveLobby.MemberLeft -= HandleLobbyMemberLeft;
+        }
         ActiveLobby?.Dispose();
         ActiveMatch?.Dispose();
         _steam?.Dispose();
@@ -128,6 +138,18 @@ public sealed class VersusPlugin : BaseUnityPlugin
     }
 
     private void SyncHudBinding() => _hud?.Bind(ActiveMatch);
+
+    private void HandleLobbyMemberLeft(ulong peerId)
+    {
+        try
+        {
+            _net?.HandlePeerDisconnected(peerId);
+        }
+        catch (System.Exception exception)
+        {
+            Logger.LogError($"Failed to eliminate disconnected peer {peerId}: {exception}");
+        }
+    }
 
     private void BindSteamSession()
     {

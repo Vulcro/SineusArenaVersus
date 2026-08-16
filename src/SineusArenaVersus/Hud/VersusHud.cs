@@ -16,6 +16,7 @@ public sealed class VersusHud : MonoBehaviour
     private VersusMatch? _match;
     private int _targetIndex;
     private ulong[] _livingTargets = Array.Empty<ulong>();
+    private bool _collapsed;
 
     public event Action? LeaveMatchRequested;
 
@@ -23,11 +24,16 @@ public sealed class VersusHud : MonoBehaviour
     {
         _match = match;
         _targetIndex = 0;
+        _collapsed = false;
     }
+
+    public void ToggleCollapsed() => _collapsed = !_collapsed;
 
     private void OnGUI()
     {
-        if (_match is null || !_match.IsActive && _match.State != VersusMatchState.Ended)
+        if (_collapsed ||
+            _match is null ||
+            !_match.IsActive && _match.State != VersusMatchState.Ended)
             return;
 
         DrawRivalStrip();

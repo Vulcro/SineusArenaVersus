@@ -93,7 +93,7 @@ public static class GameFacades
 
     internal static void HandleUnitDied(object unit)
     {
-        if (EnemyKilled is null || !IsEnemy(unit))
+        if (!IsActive || EnemyKilled is null || !IsEnemy(unit))
             return;
 
         EnemyKilled.Invoke(ClassifyEnemy(unit));
@@ -101,7 +101,7 @@ public static class GameFacades
 
     internal static void HandleBuildingDeathStateChanged(object damageable, bool isDead)
     {
-        if (!isDead || LocalKeepDestroyed is null)
+        if (!IsActive || !isDead || LocalKeepDestroyed is null)
             return;
 
         var localKeep = TryGetLocalKeep();

@@ -12,6 +12,7 @@ public static class VersusConfig
     public static ConfigEntry<int> PassiveBase = null!;
     public static ConfigEntry<int> PassivePerSuccessfulSend = null!;
     public static ConfigEntry<int> MaxPlayers = null!;
+    public static ConfigEntry<string> OpenVersusMenuKey = null!;
     public static ConfigEntry<string> CatalogOverridePath = null!;
     public static ConfigEntry<bool> DebugForceInject = null!;
     public static ConfigEntry<bool> DebugOfflineVersus = null!;
@@ -32,6 +33,7 @@ public static class VersusConfig
         PassiveBase = cfg.Bind("Versus", "PassiveBase", 2, "Base VP per passive tick");
         PassivePerSuccessfulSend = cfg.Bind("Versus", "PassivePerSuccessfulSend", 1, "Extra VP/tick per successful send");
         MaxPlayers = cfg.Bind("Versus", "MaxPlayers", 4, new ConfigDescription("2-4", new AcceptableValueRange<int>(2, 4)));
+        OpenVersusMenuKey = cfg.Bind("Versus", "OpenVersusMenuKey", "F8", "Unity KeyCode used to open Versus or collapse its HUD");
         CatalogOverridePath = cfg.Bind("Versus", "CatalogOverridePath", "", "Optional absolute path to catalog.json override");
         DebugForceInject = cfg.Bind("Debug", "DebugForceInject", false, "Enable the manual enemy inject key");
         DebugOfflineVersus = cfg.Bind("Debug", "DebugOfflineVersus", false, "Run a local host match without Steam");

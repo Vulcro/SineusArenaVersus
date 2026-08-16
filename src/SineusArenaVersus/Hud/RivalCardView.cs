@@ -1,4 +1,6 @@
+using System;
 using SineusArenaVersus.Match;
+using Steamworks;
 using UnityEngine;
 
 namespace SineusArenaVersus.Hud;
@@ -29,8 +31,24 @@ public static class RivalCardView
         GUI.color = previousColor;
     }
 
-    public static string FormatPeerName(ulong peerId) =>
-        $"Peer {peerId % 10000UL:D4}";
+    public static string FormatPeerName(ulong peerId)
+    {
+        try
+        {
+            if (SteamClient.IsValid)
+            {
+                var name = new Friend(peerId).Name;
+                if (!string.IsNullOrWhiteSpace(name))
+                    return name;
+            }
+        }
+        catch (Exception exception)
+        {
+            VersusPlugin.Log.LogDebug($"Steam name lookup failed for {peerId}: {exception.Message}");
+        }
+
+        return $"Peer {peerId % 10000UL:D4}";
+    }
 
     private static Rect Inset(Rect rect, float padding) =>
         new(rect.x + padding, rect.y + padding, rect.width - padding * 2f, rect.height - padding * 2f);

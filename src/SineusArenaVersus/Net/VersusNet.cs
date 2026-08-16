@@ -23,6 +23,7 @@ public sealed class VersusNet : IDisposable
     private readonly Func<RivalSnapMsg>? _localSnapshot;
     private readonly float _snapshotIntervalSeconds;
     private readonly ulong _hostPeerId;
+    private readonly HashSet<ulong> _disconnectedPeers = new();
     private float _snapshotTimer;
     private bool _disposed;
 
@@ -104,6 +105,23 @@ public sealed class VersusNet : IDisposable
             return;
         if (!_transport.Send(peer, payload, IsReliable(opcode)))
             throw new IOException($"Steam transport rejected {opcode} for peer {peer}.");
+    }
+
+    public void HandlePeerDisconnected(ulong peerId)
+    {
+        ThrowIfDisposed();
+        if (!IsHost ||
+            !_match.IsActive ||
+            !_match.Peers.TryGetValue(peerId, out var peer) ||
+            !peer.IsAlive)
+            return;
+
+        _disconnectedPeers.Add(peerId);
+        var payload = VersusSerializer.SerializePeer(
+            VersusOpcode.StrongholdDown,
+            new PeerMsg(peerId));
+        Broadcast(VersusOpcode.StrongholdDown, payload);
+        _match.OnStrongholdDown(peerId);
     }
 
     public void Dispose()
@@ -278,7 +296,11 @@ public sealed class VersusNet : IDisposable
     {
         ValidatePacket(opcode, payload);
         foreach (var peer in peers)
+        {
+            if (_disconnectedPeers.Contains(peer))
+                continue;
             SendTo(peer, opcode, payload);
+        }
     }
 
     private void RequireHost(ulong sender, VersusOpcode opcode)

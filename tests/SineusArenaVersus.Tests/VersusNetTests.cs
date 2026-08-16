@@ -132,6 +132,21 @@ public sealed class VersusNetTests
             sent => AssertSend(sent, Client, VersusOpcode.Winner, reliable: true));
     }
 
+    [Fact]
+    public void Host_treats_disconnected_peer_as_stronghold_down()
+    {
+        using var match = CreateMatch(Host);
+        var transport = new FakeTransport(Host);
+        using var net = new VersusNet(match, transport, Host);
+        match.StartMatch(new[] { Host, Client }, isHost: true);
+
+        net.HandlePeerDisconnected(Client);
+
+        Assert.False(match.Peers[Client].IsAlive);
+        Assert.Equal(Host, match.WinnerPeerId);
+        Assert.Empty(transport.Sent);
+    }
+
     private static void AssertSend(SentPacket sent, ulong peer, VersusOpcode opcode, bool reliable)
     {
         Assert.Equal(peer, sent.PeerId);

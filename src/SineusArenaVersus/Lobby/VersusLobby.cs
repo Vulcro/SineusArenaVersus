@@ -29,14 +29,21 @@ public sealed class VersusLobby : IDisposable
         _waveInterval = waveInterval ?? throw new ArgumentNullException(nameof(waveInterval));
         _net = net ?? throw new ArgumentNullException(nameof(net));
         SteamFriends.OnGameLobbyJoinRequested += HandleJoinRequested;
+        SteamMatchmaking.OnLobbyMemberLeave += HandleMemberLeave;
     }
 
     public event Action? SessionChanged;
+    public event Action<ulong>? MemberLeft;
     public event Action<Exception>? LobbyError;
 
     public bool HasLobby => _lobby.HasValue;
     public ulong LobbyId => _lobby?.Id ?? 0UL;
     public ulong HostPeerId => _lobby?.Owner.Id ?? 0UL;
+    public bool IsLocalHost => _lobby?.IsOwnedBy(SteamClient.SteamId) == true;
+    public bool IsLocalReady => _lobby.HasValue &&
+                                _lobby.Value.GetMemberData(
+                                    new Friend(SteamClient.SteamId),
+                                    ReadyDataKey) == "1";
     public IReadOnlyList<ulong> Members =>
         _lobby?.Members.Select(member => (ulong)member.Id).ToArray() ?? Array.Empty<ulong>();
 
@@ -70,6 +77,18 @@ public sealed class VersusLobby : IDisposable
         var lobby = RequireLobby();
         if (!lobby.InviteFriend(id))
             throw new InvalidOperationException($"Steam rejected the lobby invite for {id}.");
+    }
+
+    public void OpenInviteOverlay()
+    {
+        ThrowIfDisposed();
+        SteamFriends.OpenGameInviteOverlay(RequireLobby().Id);
+    }
+
+    public bool IsMemberReady(ulong peerId)
+    {
+        var lobby = RequireLobby();
+        return lobby.GetMemberData(new Friend(peerId), ReadyDataKey) == "1";
     }
 
     public void SetReady(bool ready)
@@ -107,6 +126,7 @@ public sealed class VersusLobby : IDisposable
         if (_disposed)
             return;
         SteamFriends.OnGameLobbyJoinRequested -= HandleJoinRequested;
+        SteamMatchmaking.OnLobbyMemberLeave -= HandleMemberLeave;
         if (_lobby.HasValue)
             _lobby.Value.Leave();
         _lobby = null;
@@ -131,6 +151,14 @@ public sealed class VersusLobby : IDisposable
         {
             LobbyError?.Invoke(exception);
         }
+    }
+
+    private void HandleMemberLeave(SteamLobby lobby, Friend member)
+    {
+        if (_disposed || !_lobby.HasValue || lobby.Id != _lobby.Value.Id)
+            return;
+
+        MemberLeft?.Invoke(member.Id);
     }
 
     private SteamLobby RequireLobby() =>
