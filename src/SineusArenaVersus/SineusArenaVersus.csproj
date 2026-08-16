@@ -34,6 +34,10 @@
       <HintPath>$(GameDir)\SineusArena_Data\Managed\Assembly-CSharp.dll</HintPath>
       <Private>false</Private>
     </Reference>
+    <Reference Include="Unity.Netcode.Runtime">
+      <HintPath>$(GameDir)\SineusArena_Data\Managed\Unity.Netcode.Runtime.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
     <Reference Include="com.rlabrecque.steamworks.net">
       <HintPath>$(GameDir)\SineusArena_Data\Managed\com.rlabrecque.steamworks.net.dll</HintPath>
       <Private>false</Private>

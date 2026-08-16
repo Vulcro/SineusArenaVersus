@@ -22,7 +22,7 @@ public sealed class VersusMatch : IDisposable
     private readonly ulong _localPeerId;
     private readonly VersusEconomy _economy;
     private readonly VersusCatalog _catalog;
-    private readonly Func<string, int, bool> _injectPack;
+    private readonly Func<string, int, InjectMarkerInfo?, bool> _injectPack;
     private readonly Func<float> _passiveInterval;
     private readonly Func<float> _waveInterval;
     private readonly ISoloRunLauncher _soloRunLauncher;
@@ -42,7 +42,7 @@ public sealed class VersusMatch : IDisposable
         ulong localPeerId,
         VersusEconomy economy,
         VersusCatalog catalog,
-        Func<string, int, bool>? injectPack = null,
+        Func<string, int, InjectMarkerInfo?, bool>? injectPack = null,
         Func<float>? passiveInterval = null,
         Func<float>? waveInterval = null,
         bool redirectTargetsToLocal = false,
@@ -51,7 +51,7 @@ public sealed class VersusMatch : IDisposable
         _localPeerId = localPeerId;
         _economy = economy ?? throw new ArgumentNullException(nameof(economy));
         _catalog = catalog ?? throw new ArgumentNullException(nameof(catalog));
-        _injectPack = injectPack ?? GameFacades.TryInjectPack;
+        _injectPack = injectPack ?? ((enemyKey, count, marker) => GameFacades.TryInjectPack(enemyKey, count, marker));
         _passiveInterval = passiveInterval ?? (() => VersusConfig.PassiveIntervalSeconds.Value);
         _waveInterval = waveInterval ?? (() => VersusConfig.WaveIntervalSeconds.Value);
         _redirectTargetsToLocal = redirectTargetsToLocal;
@@ -218,8 +218,10 @@ public sealed class VersusMatch : IDisposable
 
             var injectSucceeded = true;
             if (IsTargetingLocal(pending))
+            {
                 injectSucceeded = _catalog.TryGet(send.CatalogId, out var offering) &&
-                                  _injectPack(offering.EnemyKey, send.Count);
+                                  _injectPack(offering.EnemyKey, send.Count, BuildSenderMarker(send.From));
+            }
 
             if (send.From == _localPeerId)
             {
@@ -349,6 +351,16 @@ public sealed class VersusMatch : IDisposable
 
     private bool IsTargetingLocal(PendingSend pending) =>
         pending.Message.To == _localPeerId || _redirectTargetsToLocal;
+
+    private InjectMarkerInfo BuildSenderMarker(ulong senderPeerId)
+    {
+        var order = VersusSenderStyle.OrderedPeers(_peers.Keys);
+        var slot = VersusSenderStyle.SlotIndex(order, senderPeerId);
+        var displayName = Hud.RivalCardView.FormatPeerName(senderPeerId);
+        return new InjectMarkerInfo(
+            VersusSenderStyle.ShortLabel(slot, displayName),
+            VersusSenderStyle.ColorForSlot(slot));
+    }
 
     private void RefundPending(PendingSend pending)
     {

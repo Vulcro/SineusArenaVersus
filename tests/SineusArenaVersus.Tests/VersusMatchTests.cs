@@ -63,7 +63,7 @@ public sealed class VersusMatchTests
     public void Wave_settles_local_send_to_living_remote_target()
     {
         var economy = FundedEconomy();
-        using var match = CreateMatch(economy, (_, _) => throw new Xunit.Sdk.XunitException("Remote send must not inject locally."));
+        using var match = CreateMatch(economy, (_, _, _) => throw new Xunit.Sdk.XunitException("Remote send must not inject locally."));
         match.QueueSendRequested += send => match.OnQueueSendValidated(send);
         match.StartMatch(new[] { LocalPeer, RivalPeer }, isHost: true);
         Assert.True(match.TryQueueSend(RivalPeer, "swarm"));
@@ -273,7 +273,7 @@ public sealed class VersusMatchTests
 
     private static VersusMatch CreateMatch(
         VersusEconomy economy,
-        System.Func<string, int, bool>? inject = null,
+        System.Func<string, int, SineusArenaVersus.Game.InjectMarkerInfo?, bool>? inject = null,
         System.Func<float>? waveInterval = null,
         bool redirectTargetsToLocal = false,
         ISoloRunLauncher? soloRunLauncher = null) =>

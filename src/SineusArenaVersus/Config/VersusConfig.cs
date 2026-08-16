@@ -24,6 +24,10 @@ public static class VersusConfig
     public static ConfigEntry<string> DebugEnemyKey = null!;
     public static ConfigEntry<int> DebugEnemyCount = null!;
     public static ConfigEntry<float> InjectRadius = null!;
+    public static ConfigEntry<bool> ShowInjectSenderLabels = null!;
+    public static ConfigEntry<bool> ShowInjectSenderLights = null!;
+    public static ConfigEntry<float> InjectMarkerLightRange = null!;
+    public static ConfigEntry<float> InjectMarkerLightIntensity = null!;
     public static ConfigEntry<bool> EnableSpectateViews = null!;
 
     public static void Bind(ConfigFile cfg)
@@ -58,6 +62,26 @@ public static class VersusConfig
             new ConfigDescription("Manual inject pack size", new AcceptableValueRange<int>(1, 100)));
         InjectRadius = cfg.Bind("Versus", "InjectRadius", 15f,
             new ConfigDescription("Enemy inject radius around the local player", new AcceptableValueRange<float>(1f, 100f)));
+        ShowInjectSenderLabels = cfg.Bind(
+            "Versus",
+            "ShowInjectSenderLabels",
+            true,
+            "Show P1/P2 (+ name) labels above Versus-injected enemies");
+        ShowInjectSenderLights = cfg.Bind(
+            "Versus",
+            "ShowInjectSenderLights",
+            true,
+            "Tinted point light on Versus-injected enemies matching the sender slot color");
+        InjectMarkerLightRange = cfg.Bind(
+            "Versus",
+            "InjectMarkerLightRange",
+            4f,
+            new ConfigDescription("Point light range for inject markers", new AcceptableValueRange<float>(1f, 20f)));
+        InjectMarkerLightIntensity = cfg.Bind(
+            "Versus",
+            "InjectMarkerLightIntensity",
+            1.8f,
+            new ConfigDescription("Point light intensity for inject markers", new AcceptableValueRange<float>(0.1f, 8f)));
         EnableSpectateViews = cfg.Bind(
             "Polish",
             "EnableSpectateViews",

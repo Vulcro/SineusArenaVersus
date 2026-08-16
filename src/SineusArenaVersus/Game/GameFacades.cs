@@ -56,13 +56,16 @@ public static class GameFacades
         return _soloRunLauncher.TryStartSoloRun();
     }
 
-    public static bool TryInjectPack(string enemyKey, int count)
+    public static bool TryInjectPack(string enemyKey, int count) =>
+        TryInjectPack(enemyKey, count, marker: null);
+
+    public static bool TryInjectPack(string enemyKey, int count, InjectMarkerInfo? marker)
     {
         return TryInjectPack(
             enemyKey,
             count,
             GetEnemyKeyResolver,
-            TrySchedulePack,
+            (spawnId, packCount) => TrySchedulePack(spawnId, packCount, marker),
             exception => Debug.LogError($"[SineusArenaVersus] Enemy inject failed: {exception}"));
     }
 
@@ -79,9 +82,17 @@ public static class GameFacades
         try
         {
             if (!resolverFactory().TryResolve(enemyKey, out var spawnId))
+            {
+                Debug.LogWarning($"[SineusArenaVersus] Inject skipped: unknown enemyKey '{enemyKey}' (check catalog spawnId).");
                 return false;
+            }
 
-            return scheduler(spawnId, count);
+            var ok = scheduler(spawnId, count);
+            if (!ok)
+                Debug.LogWarning($"[SineusArenaVersus] Inject failed for spawnId '{spawnId}' x{count} (no matching BaseLairSpawner prefab?).");
+            else
+                Debug.Log($"[SineusArenaVersus] Inject scheduled: {enemyKey} -> {spawnId} x{count}");
+            return ok;
         }
         catch (Exception exception)
         {
@@ -142,7 +153,7 @@ public static class GameFacades
         return _enemyKeyResolver;
     }
 
-    private static bool TrySchedulePack(string spawnId, int count)
+    private static bool TrySchedulePack(string spawnId, int count, InjectMarkerInfo? marker)
     {
         var spawnerType = AccessTools.TypeByName("BaseLairSpawner");
         if (spawnerType is null)
@@ -155,6 +166,10 @@ public static class GameFacades
         var scheduleMethod = spawnerType.GetMethod("ScheduleSpawnUnit", InstanceMembers);
         if (scheduleMethod is null)
             return false;
+
+        Action<Unit>? onSpawned = marker is { } info
+            ? VersusSpawnHook.CreateCallback(info.Label, info.Color)
+            : null;
 
         foreach (var candidate in UnityEngine.Object.FindObjectsByType(spawnerType))
         {
@@ -170,7 +185,7 @@ public static class GameFacades
             {
                 var angle = Mathf.PI * 2f * index / count;
                 var offset = new Vector3(Mathf.Cos(angle), 0f, Mathf.Sin(angle)) * radius;
-                scheduleMethod.Invoke(candidate, new[] { prefab, anchor, offset, null });
+                scheduleMethod.Invoke(candidate, new object?[] { prefab, anchor, offset, onSpawned });
             }
 
             return true;
