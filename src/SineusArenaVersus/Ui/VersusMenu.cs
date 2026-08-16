@@ -117,6 +117,7 @@ public sealed class VersusMenu : MonoBehaviour
             GUILayout.Label($"{RivalCardView.FormatPeerName(peerId)} — {ready}");
         }
 
+        GUILayout.Label("Start launches a local SOLO arena per player (not co-op).");
         GUILayout.Space(8f);
         if (GUILayout.Button("Invite Friends"))
             RunOperation(() => lobby.OpenInviteOverlay());
@@ -124,7 +125,7 @@ public sealed class VersusMenu : MonoBehaviour
             RunOperation(() => lobby.SetReady(!lobby.IsLocalReady));
 
         GUI.enabled = !_operationPending && lobby.IsLocalHost;
-        if (GUILayout.Button("Start"))
+        if (GUILayout.Button("Start Versus"))
             RunOperation(lobby.StartMatchAsHost);
         GUI.enabled = true;
         DrawError();

@@ -88,20 +88,19 @@ Mod patches: force `ShouldSingleplayerPause` false, skip `RequestSingleplayerPau
 
 Assembly metadata strings identified:
 
-- `UILobbySteamController::get_I()`
-- `void UILobbySteamController::StartGame()`
-- `GameFlowManager GameFlowManager::get_I()`
-- `bool GameFlowManager::get_GameplayStarted()`
-- `bool GameFlowManager::get_IsSinglePlayer()`
-- `void GameFlowManager::TryStartGameplay()`
-- `System.Threading.Tasks.Task LobbyManager::StartGame()`
+- `QuickStartLobby::get_I()` / `void QuickStartLobby::StartAsHost()`
+- `ProjectSceneManager::PrepareFirstMissionAfterSync(string sceneName, int expectedClients)`
+- `UILobbySteamController::DisconnectNetworkCompletely()` / private `StartDeferredSceneLoad(int, string)`
+- `LobbySceneSelector::get_SelectedMapId()`
+- `GameFlowManager::get_GameplayStarted()` / `get_IsSinglePlayer()`
 
-`ReflectionSoloRunLauncher` uses the parameterless
-`UILobbySteamController.I.StartGame()` UI path. Existing solo gameplay is
-detected only when `GameFlowManager.I.GameplayStarted` and `IsSinglePlayer` are
-both true. If the UI singleton or method is unavailable, Versus start aborts
-with an error instructing the player to start a vanilla Solo run and retry;
-the match never transitions to `InMatch`.
+**Do not call `UILobbySteamController.StartGame()` for Versus.** That path uses the
+Steam lobby member count and loads a shared co-op arena when 2+ players are in the
+lobby (including the Versus Friends lobby, which is often the active Steam lobby).
+
+`ReflectionSoloRunLauncher` disconnects any shared NGO session, starts a local host,
+then loads the selected map with `expectedClients = 1`. Existing solo gameplay is
+detected when `GameplayStarted && IsSinglePlayer`.
 
 ## Manual inject smoke
 

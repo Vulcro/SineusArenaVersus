@@ -20,7 +20,7 @@ public sealed class VersusPlugin : BaseUnityPlugin
 {
     public const string PluginGuid = "Fowks.SineusArenaVersus";
     public const string PluginName = "Sineus Arena Versus";
-    public const string PluginVersion = "0.1.6";
+    public const string PluginVersion = "0.1.7";
 
     internal static VersusPlugin Instance { get; private set; } = null!;
     internal static ManualLogSource Log => Instance.Logger;
@@ -176,6 +176,10 @@ public sealed class VersusPlugin : BaseUnityPlugin
     {
         try
         {
+            // Solo boot / map load may leave the shared Steam lobby while P2P peers stay valid.
+            if (ActiveMatch?.IsActive == true)
+                return;
+
             _net?.HandlePeerDisconnected(peerId);
         }
         catch (System.Exception exception)
@@ -195,7 +199,8 @@ public sealed class VersusPlugin : BaseUnityPlugin
 
         var localPeerId = SteamBootstrap.LocalSteamId();
         var match = CreateMatch(localPeerId);
-        _transport = new SteamP2PTransport(ActiveLobby.ContainsPeer);
+        ActiveMatch = match;
+        _transport = new SteamP2PTransport(IsVersusPeerAllowed);
         _net = new VersusNet(
             match,
             _transport,
@@ -205,8 +210,14 @@ public sealed class VersusPlugin : BaseUnityPlugin
                 GameFacades.TryGetLocalKeepHp01(),
                 GameFacades.IsLocalKeepAlive()));
         _net.PacketRejected += exception => Logger.LogWarning($"Rejected Versus packet: {exception.Message}");
-        ActiveMatch = match;
         SyncHudBinding();
+    }
+
+    private bool IsVersusPeerAllowed(ulong peerId)
+    {
+        if (ActiveMatch is not null && ActiveMatch.Peers.ContainsKey(peerId))
+            return true;
+        return ActiveLobby?.ContainsPeer(peerId) == true;
     }
 
     private static VersusMatch CreateMatch(ulong localPeerId)

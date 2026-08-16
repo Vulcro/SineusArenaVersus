@@ -64,6 +64,9 @@ This package was created with significant assistance from generative AI / LLM ag
 
 ## Changelog
 
+### 0.1.7
+- Start Versus boots a local solo arena per player (no shared co-op NGO session)
+
 ### 0.1.6
 - Point website / source links at https://github.com/DocFowks/SineusArenaVersus
 
