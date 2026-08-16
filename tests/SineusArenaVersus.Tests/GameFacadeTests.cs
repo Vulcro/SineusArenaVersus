@@ -57,6 +57,38 @@ public sealed class GameFacadeTests
         Assert.Equal(KillTier.Trash, GameFacades.ClassifyEnemy(new FakeUnit()));
     }
 
+    [Theory]
+    [InlineData(false, true, true)]
+    [InlineData(true, true, false)]
+    [InlineData(false, false, false)]
+    [InlineData(true, false, false)]
+    public void Keep_destroyed_requires_false_to_true_transition(
+        bool wasDead,
+        bool isDead,
+        bool expected)
+    {
+        Assert.Equal(expected, GameFacades.IsNewDeathTransition(wasDead, isDead));
+    }
+
+    [Fact]
+    public void Inject_returns_false_when_resolver_loading_fails()
+    {
+        var schedulerCalled = false;
+
+        var result = GameFacades.TryInjectPack(
+            "trash",
+            3,
+            () => throw new System.IO.InvalidDataException("Malformed catalog"),
+            (_, _) =>
+            {
+                schedulerCalled = true;
+                return true;
+            });
+
+        Assert.False(result);
+        Assert.False(schedulerCalled);
+    }
+
     private sealed class FakeUnit
     {
         public bool isBoss { get; set; }

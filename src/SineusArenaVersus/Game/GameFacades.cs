@@ -39,16 +39,34 @@ public static class GameFacades
 
     public static bool TryInjectPack(string enemyKey, int count)
     {
-        if (count <= 0 || !GetEnemyKeyResolver().TryResolve(enemyKey, out var spawnId))
+        return TryInjectPack(
+            enemyKey,
+            count,
+            GetEnemyKeyResolver,
+            TrySchedulePack,
+            exception => Debug.LogError($"[SineusArenaVersus] Enemy inject failed: {exception}"));
+    }
+
+    internal static bool TryInjectPack(
+        string enemyKey,
+        int count,
+        Func<EnemyKeyResolver> resolverFactory,
+        Func<string, int, bool> scheduler,
+        Action<Exception>? onError = null)
+    {
+        if (count <= 0)
             return false;
 
         try
         {
-            return TrySchedulePack(spawnId, count);
+            if (!resolverFactory().TryResolve(enemyKey, out var spawnId))
+                return false;
+
+            return scheduler(spawnId, count);
         }
         catch (Exception exception)
         {
-            Debug.LogError($"[SineusArenaVersus] Enemy inject failed: {exception}");
+            onError?.Invoke(exception);
             return false;
         }
     }
@@ -60,6 +78,9 @@ public static class GameFacades
 
         return Math.Max(0f, Math.Min(1f, current / maximum));
     }
+
+    internal static bool IsNewDeathTransition(bool wasDead, bool isDead) =>
+        !wasDead && isDead;
 
     internal static KillTier ClassifyEnemy(object unit)
     {

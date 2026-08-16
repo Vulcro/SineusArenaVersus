@@ -16,8 +16,16 @@ internal static class KeepDestroyedPatch
             ?? throw new MissingMethodException(damageableType.FullName, "HandleDeathStateChanged(Boolean)");
     }
 
-    private static void Postfix(object __instance, bool isDead)
+    private static void Prefix(object __instance, out bool __state)
     {
-        GameFacades.HandleBuildingDeathStateChanged(__instance, isDead);
+        var stateField = AccessTools.Field(__instance.GetType(), "_isDeadLocal")
+            ?? throw new MissingFieldException(__instance.GetType().FullName, "_isDeadLocal");
+        __state = (bool)stateField.GetValue(__instance);
+    }
+
+    private static void Postfix(object __instance, bool isDead, bool __state)
+    {
+        if (GameFacades.IsNewDeathTransition(__state, isDead))
+            GameFacades.HandleBuildingDeathStateChanged(__instance, true);
     }
 }
