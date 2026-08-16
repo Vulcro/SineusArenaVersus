@@ -9,14 +9,12 @@ namespace SineusArenaVersus.Hud;
 
 public sealed class SendRadialLayout
 {
-    public float OverlayAlpha { get; set; } = 0.12f;
-    public float RadiusFraction { get; set; } = 0.11f;
-    public float ButtonWidth { get; set; } = 78f;
-    public float ButtonHeight { get; set; } = 34f;
-    public float CenterWidth { get; set; } = 132f;
-    public float CenterHeight { get; set; } = 58f;
+    public float RadiusFraction { get; set; } = 0.10f;
+    public float ButtonWidth { get; set; } = 86f;
+    public float ButtonHeight { get; set; } = 28f;
+    public float CenterWidth { get; set; } = 110f;
+    public float CenterHeight { get; set; } = 44f;
     public float MouseRelatchPixels { get; set; } = 12f;
-    public float LocalDimRadiusPad { get; set; } = 28f;
 }
 
 public sealed class SendRadialMenu
@@ -124,7 +122,6 @@ public sealed class SendRadialMenu
             return;
 
         var (width, height) = _screenSize();
-        _anchorScreenPoint = _anchorScreen();
         var centerGui = SendRadialLogic.ScreenToGui(_anchorScreenPoint, height);
 
         var offerings = _match.Catalog.All;
@@ -133,12 +130,6 @@ public sealed class SendRadialMenu
             return;
 
         var radius = Mathf.Min(width, height) * _layout.RadiusFraction;
-        var dimPad = Math.Max(_layout.ButtonWidth, _layout.ButtonHeight) * 0.5f + _layout.LocalDimRadiusPad;
-        var dimSize = (radius + dimPad) * 2f;
-        VersusUiTheme.DrawFilled(
-            new Rect(centerGui.x - dimSize * 0.5f, centerGui.y - dimSize * 0.5f, dimSize, dimSize),
-            new Color(0f, 0f, 0f, _layout.OverlayAlpha));
-
         var vp = _match.Economy.Vp;
 
         for (var i = 0; i < count; i++)
@@ -152,13 +143,14 @@ public sealed class SendRadialMenu
                 _layout.ButtonHeight);
 
             var affordable = SendRadialLogic.CanConfirm(_match.ShopEnabled, vp, offering.Cost);
-            VersusUiTheme.DrawPanel(rect, i == HighlightIndex);
+            var fill = i == HighlightIndex ? VersusUiTheme.HoverFill : VersusUiTheme.SectorFill;
+            VersusUiTheme.DrawFilled(rect, fill);
+            VersusUiTheme.DrawBorder(rect, i == HighlightIndex ? VersusUiTheme.Accent : VersusUiTheme.PanelBorder, 1f);
             var previous = GUI.color;
             GUI.color = affordable ? VersusUiTheme.Text : VersusUiTheme.Muted;
-            GUI.Label(rect, $"{offering.DisplayName}\n{offering.Cost}");
+            GUI.Label(rect, $"{offering.DisplayName} {offering.Cost}");
             GUI.color = previous;
 
-            // Single left-click on a wedge: select + confirm (Update GetKeyDown alone was easy to miss).
             if (Event.current is { type: EventType.MouseDown, button: 0 } &&
                 rect.Contains(Event.current.mousePosition))
             {
@@ -180,11 +172,12 @@ public sealed class SendRadialMenu
             centerGui.y - _layout.CenterHeight * 0.5f,
             _layout.CenterWidth,
             _layout.CenterHeight);
-        VersusUiTheme.DrawPanel(centerRect, highlighted: true);
+        VersusUiTheme.DrawFilled(centerRect, VersusUiTheme.SectorFill);
+        VersusUiTheme.DrawBorder(centerRect, VersusUiTheme.Accent, 1f);
         var labelColor = _denyFlash ? VersusUiTheme.Muted : VersusUiTheme.Text;
         var previousLabel = GUI.color;
         GUI.color = labelColor;
-        GUI.Label(centerRect, $"{targetName}\n{offeringLine}\nVP {vp}");
+        GUI.Label(centerRect, $"{targetName}\n{offeringLine} · {vp} VP");
         GUI.color = previousLabel;
     }
 

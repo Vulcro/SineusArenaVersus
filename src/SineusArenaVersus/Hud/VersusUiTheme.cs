@@ -10,7 +10,7 @@ public static class VersusUiTheme
     public static readonly Color Text = new(0.93f, 0.90f, 0.82f, 1f);
     public static readonly Color Muted = new(0.45f, 0.45f, 0.48f, 0.85f);
     public static readonly Color HoverFill = new(0.90f, 0.72f, 0.35f, 0.35f);
-    public static readonly Color SectorFill = new(0.12f, 0.13f, 0.16f, 0.92f);
+    public static readonly Color SectorFill = new(0.10f, 0.11f, 0.14f, 0.82f);
 
     public static void DrawFilled(Rect rect, Color color)
     {

@@ -14,12 +14,12 @@ namespace SineusArenaVersus.Hud;
 /// </summary>
 public sealed class VersusHud : MonoBehaviour
 {
-    private const float StatusWidth = 260f;
-    private const float StatusHeight = 118f;
-    private const float RivalCardWidth = 150f;
-    private const float RivalCardHeight = 72f;
-    private const float RivalCardGap = 8f;
-    private const float Margin = 12f;
+    private const float StatusWidth = 248f;
+    private const float StatusHeight = 96f;
+    private const float RivalCardWidth = 140f;
+    private const float RivalCardHeight = 56f;
+    private const float RivalCardGap = 6f;
+    private const float Margin = 10f;
 
     private VersusMatch? _match;
     private VersusSpectate? _spectate;
@@ -92,19 +92,19 @@ public sealed class VersusHud : MonoBehaviour
         if (rivals.Length == 0)
             return;
 
-        RefreshLivingTargets();
+        // Bottom-left stack above the status strip — avoid vanilla top HP / timer / minimap.
         var selectedId = _livingTargets.Length > 0 &&
                          _targetIndex >= 0 &&
                          _targetIndex < _livingTargets.Length
             ? _livingTargets[_targetIndex]
             : 0UL;
-        var totalWidth = rivals.Length * RivalCardWidth + (rivals.Length - 1) * RivalCardGap;
-        var startX = (Screen.width - totalWidth) * 0.5f;
+        var stackBottom = Screen.height - StatusHeight - Margin - 6f;
         for (var i = 0; i < rivals.Length; i++)
         {
+            var fromBottom = rivals.Length - 1 - i;
             var rect = new Rect(
-                startX + i * (RivalCardWidth + RivalCardGap),
                 Margin,
+                stackBottom - (fromBottom + 1) * (RivalCardHeight + RivalCardGap),
                 RivalCardWidth,
                 RivalCardHeight);
             RivalCardView.Draw(rect, rivals[i], RivalCardView.FormatPeerName(rivals[i].PeerId));
@@ -124,31 +124,31 @@ public sealed class VersusHud : MonoBehaviour
             Screen.height - StatusHeight - Margin,
             StatusWidth,
             StatusHeight);
-        VersusUiTheme.DrawPanel(_statusRect, highlighted: false);
+        VersusUiTheme.DrawFilled(_statusRect, VersusUiTheme.PanelBg);
+        VersusUiTheme.DrawBorder(_statusRect, VersusUiTheme.PanelBorder, 1f);
 
         var economy = _match.Economy;
-        var y = _statusRect.y + 8f;
-        var x = _statusRect.x + 10f;
-        var w = _statusRect.width - 20f;
+        var y = _statusRect.y + 6f;
+        var x = _statusRect.x + 8f;
+        var w = _statusRect.width - 16f;
         var prev = GUI.color;
         GUI.color = VersusUiTheme.Text;
-        GUI.Label(new Rect(x, y, w, 18f), $"VP {economy.Vp}   ·   +{economy.PassiveAmountPerTick}/tick");
-        y += 18f;
+        GUI.Label(new Rect(x, y, w, 16f), $"VP {economy.Vp}  ·  +{economy.PassiveAmountPerTick}/tick");
+        y += 16f;
         GUI.Label(
-            new Rect(x, y, w, 18f),
+            new Rect(x, y, w, 16f),
             $"Wave {_match.WaveIndex + 1}  ·  {_match.WaveSecondsRemaining:0.#}s");
-        y += 18f;
+        y += 16f;
 
-        RefreshLivingTargets();
         var targetLine = _livingTargets.Length == 0
             ? "Target —"
             : $"Target  {RivalCardView.FormatPeerName(_livingTargets[Mathf.Clamp(_targetIndex, 0, _livingTargets.Length - 1)])}";
         GUI.color = VersusUiTheme.Accent;
-        GUI.Label(new Rect(x, y, w, 18f), targetLine);
-        y += 20f;
+        GUI.Label(new Rect(x, y, w, 16f), targetLine);
+        y += 16f;
 
         GUI.color = VersusUiTheme.Muted;
-        GUI.Label(new Rect(x, y, w, 36f), FormatIncomingLine());
+        GUI.Label(new Rect(x, y, w, 28f), FormatIncomingLine());
         GUI.color = prev;
 
         if (_spectate is not null && VersusConfig.EnableSpectateViews.Value)
@@ -279,19 +279,19 @@ public sealed class VersusHud : MonoBehaviour
         if (rivalCount <= 0)
             return false;
 
-        float screenWidth;
+        float screenHeight;
         try
         {
-            screenWidth = Screen.width;
+            screenHeight = Screen.height;
         }
         catch (Exception)
         {
             return false;
         }
 
-        var totalWidth = rivalCount * RivalCardWidth + (rivalCount - 1) * RivalCardGap;
-        var startX = (screenWidth - totalWidth) * 0.5f;
-        rect = new Rect(startX, Margin, totalWidth, RivalCardHeight);
+        var stackBottom = screenHeight - StatusHeight - Margin - 6f;
+        var top = stackBottom - rivalCount * (RivalCardHeight + RivalCardGap) + RivalCardGap;
+        rect = new Rect(Margin, top, RivalCardWidth, rivalCount * (RivalCardHeight + RivalCardGap) - RivalCardGap);
         return true;
     }
 
