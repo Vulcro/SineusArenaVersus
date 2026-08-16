@@ -23,9 +23,9 @@ internal static class KeepDestroyedPatch
         __state = (bool)stateField.GetValue(__instance);
     }
 
-    private static void Postfix(object __instance, bool isDead, bool __state)
+    private static void Postfix(object __instance, bool isDeadNow, bool __state)
     {
-        if (GameFacades.IsNewDeathTransition(__state, isDead))
+        if (GameFacades.IsNewDeathTransition(__state, isDeadNow))
             GameFacades.HandleBuildingDeathStateChanged(__instance, true);
     }
 }

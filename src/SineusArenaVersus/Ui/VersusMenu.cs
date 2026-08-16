@@ -15,6 +15,7 @@ public sealed class VersusMenu : MonoBehaviour
 
     private Func<VersusLobby?>? _getLobby;
     private Func<VersusMatch?>? _getMatch;
+    private Func<bool>? _ensureSteam;
     private VersusHud? _hud;
     private bool _isOpen;
     private bool _operationPending;
@@ -24,11 +25,13 @@ public sealed class VersusMenu : MonoBehaviour
     public void Initialize(
         Func<VersusLobby?> getLobby,
         Func<VersusMatch?> getMatch,
-        VersusHud hud)
+        VersusHud hud,
+        Func<bool>? ensureSteam = null)
     {
         _getLobby = getLobby ?? throw new ArgumentNullException(nameof(getLobby));
         _getMatch = getMatch ?? throw new ArgumentNullException(nameof(getMatch));
         _hud = hud ?? throw new ArgumentNullException(nameof(hud));
+        _ensureSteam = ensureSteam;
     }
 
     private void Update()
@@ -83,6 +86,15 @@ public sealed class VersusMenu : MonoBehaviour
         if (lobby is null)
         {
             GUILayout.Label("Steam is unavailable.");
+            GUILayout.Label("Launch the game through Steam / TMM (Steam).");
+            if (GUILayout.Button("Retry Steam"))
+            {
+                _error = null;
+                if (_ensureSteam?.Invoke() != true)
+                    _error = "Still unavailable — check BepInEx log for Steam errors.";
+            }
+
+            DrawError();
             return;
         }
 

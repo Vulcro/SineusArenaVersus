@@ -17,19 +17,24 @@ public sealed class SteamBootstrap : IDisposable
 
     private readonly ISteamRuntime _runtime;
     private readonly Action<Exception> _onError;
+    private readonly Action<string>? _onInfo;
     private bool _ownsClient;
     private bool _ownsCallbackPump;
     private bool _disposed;
 
-    public SteamBootstrap(Action<Exception>? onError = null)
-        : this(new FacepunchSteamRuntime(), onError)
+    public SteamBootstrap(Action<Exception>? onError = null, Action<string>? onInfo = null)
+        : this(new FacepunchSteamRuntime(), onError, onInfo)
     {
     }
 
-    internal SteamBootstrap(ISteamRuntime runtime, Action<Exception>? onError = null)
+    internal SteamBootstrap(
+        ISteamRuntime runtime,
+        Action<Exception>? onError = null,
+        Action<string>? onInfo = null)
     {
         _runtime = runtime ?? throw new ArgumentNullException(nameof(runtime));
         _onError = onError ?? (_ => { });
+        _onInfo = onInfo;
     }
 
     public bool IsAvailable { get; private set; }
@@ -50,13 +55,15 @@ public sealed class SteamBootstrap : IDisposable
             }
 
             IsAvailable = _runtime.IsValid;
+            if (!IsAvailable)
+                _onInfo?.Invoke("SteamClient.IsValid is false after Init.");
             return IsAvailable;
         }
         catch (Exception exception)
         {
             _onError(exception);
-            IsAvailable = false;
-            return false;
+            IsAvailable = _runtime.IsValid;
+            return IsAvailable;
         }
     }
 

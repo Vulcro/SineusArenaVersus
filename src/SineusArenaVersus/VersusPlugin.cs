@@ -20,7 +20,7 @@ public sealed class VersusPlugin : BaseUnityPlugin
 {
     public const string PluginGuid = "Fowks.SineusArenaVersus";
     public const string PluginName = "Sineus Arena Versus";
-    public const string PluginVersion = "0.1.1";
+    public const string PluginVersion = "0.1.2";
 
     internal static VersusPlugin Instance { get; private set; } = null!;
     internal static ManualLogSource Log => Instance.Logger;
@@ -43,29 +43,53 @@ public sealed class VersusPlugin : BaseUnityPlugin
         _hud = gameObject.AddComponent<VersusHud>();
         _hud.LeaveMatchRequested += LeaveActiveMatch;
         _menu = gameObject.AddComponent<VersusMenu>();
-        _menu.Initialize(() => ActiveLobby, () => ActiveMatch, _hud);
+        _menu.Initialize(() => ActiveLobby, () => ActiveMatch, _hud, TryEnsureSteam);
         _harmony = new Harmony(PluginGuid);
         _harmony.PatchAll();
-        _steam = new SteamBootstrap(exception => Logger.LogError($"Steam error: {exception}"));
-        if (_steam.Initialize())
-        {
-            ActiveLobby = new VersusLobby(
-                () => VersusConfig.MaxPlayers.Value,
-                () => VersusConfig.WaveIntervalSeconds.Value,
-                () => _net);
-            ActiveLobby.SessionChanged += BindSteamSession;
-            ActiveLobby.MemberLeft += HandleLobbyMemberLeft;
-            ActiveLobby.LobbyError += exception => Logger.LogError($"Lobby error: {exception}");
-        }
-        else
-        {
-            Logger.LogWarning("Steam unavailable; Friends Versus is disabled.");
-        }
+        _steam = new SteamBootstrap(
+            exception => Logger.LogError($"Steam error: {exception}"),
+            message => Logger.LogInfo(message));
+        TryEnsureSteam();
 
         if (VersusConfig.DebugOfflineVersus.Value)
             StartOfflineMatch();
         SyncHudBinding();
         Logger.LogInfo($"{PluginName} {PluginVersion} loaded");
+    }
+
+    private void Start()
+    {
+        // Game Steamworks.NET often finishes after plugin Awake — retry once.
+        TryEnsureSteam();
+    }
+
+    /// <summary>
+    /// Preloads the game's steam_api64.dll then inits Facepunch. Safe to call repeatedly.
+    /// </summary>
+    public bool TryEnsureSteam()
+    {
+        if (ActiveLobby is not null)
+            return true;
+        if (_steam is null)
+            return false;
+
+        SteamNativeLoader.TryEnsureLoaded(message => Logger.LogInfo(message));
+        if (!_steam.Initialize())
+        {
+            Logger.LogWarning("Steam unavailable; Friends Versus is disabled until Steam attaches.");
+            return false;
+        }
+
+        ActiveLobby = new VersusLobby(
+            () => VersusConfig.MaxPlayers.Value,
+            () => VersusConfig.WaveIntervalSeconds.Value,
+            () => _net);
+        ActiveLobby.SessionChanged += BindSteamSession;
+        ActiveLobby.MemberLeft += HandleLobbyMemberLeft;
+        ActiveLobby.LobbyError += exception => Logger.LogError($"Lobby error: {exception}");
+        Logger.LogInfo("Steam Friends Versus lobby ready.");
+        SyncHudBinding();
+        return true;
     }
 
     private void OnDestroy()

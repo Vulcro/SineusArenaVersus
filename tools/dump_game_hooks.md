@@ -23,7 +23,7 @@ reflection. Missing state produces HP `0` / alive `false`.
 
 ## Keep destruction
 
-- `void BuildingDamageable::HandleDeathStateChanged(bool)` (private)
+- `void BuildingDamageable::HandleDeathStateChanged(bool isDeadNow)` (private)
 - `Unit BuildingDamageable::get_Owner()`
 - `void Unit::OnDied(IDamageable)` (private)
 - `event System.Action<PlayerTeam> Unit::keyBuildingDestroyed`
