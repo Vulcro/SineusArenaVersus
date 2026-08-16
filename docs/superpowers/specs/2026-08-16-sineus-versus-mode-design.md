@@ -29,6 +29,8 @@ Emit rival snapshot ~3 Hz
 
 **Chosen networking model:** parallel solo sessions + light custom sync (not hijacking native co-op shared arena).
 
+**No pause (co-op style):** even though each peer runs a local solo match, **pause is disabled for the whole Versus match** (ESC / buff / building menus may open, but `Time.timeScale` stays 1). Keeps arenas fluid and temporally aligned between players.
+
 **Not in V1:** shared enemy pool, detouring native co-op combat, ranked, rollback netcode, dedicated relay.
 
 **Polish (post-V1):** SubViewport / mini arena spectate on rival cards (toggleable, perf-budgeted).
@@ -176,5 +178,5 @@ Transport: Steam Matchmaking lobby + Steam Networking P2P.
 | Send targeting | Single opponent |
 | Economy | Kill VP + passive every 10s; income scales per successful send |
 | Plugin shape | Monolithic BepInEx package |
-| Spectate SubViewport | Polish phase |
+| No pause in Versus | Co-op style: menus OK, `Time.timeScale` stays 1 while match active |
 | Host disconnect | Eliminate host; lowest surviving SteamId becomes host, or sole survivor wins |

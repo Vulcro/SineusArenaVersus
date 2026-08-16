@@ -69,6 +69,21 @@ Default `spawnId` values are data placeholders and must be replaced in
 `catalog.json` (or its configured override) with live prefab `UnitName` or
 GameObject names observed in-game.
 
+## Pause suppression (Versus)
+
+Vanilla solo pause freezes the local sim (`Time.timeScale = 0`). Versus sessions are
+solo runs, so co-op-style no-pause is required for peer sync. Menus may still open.
+
+- `bool UIManager::ShouldSingleplayerPause()` — gated on `GameFlowManager.IsSinglePlayer`
+- `void UIManager::RequestSingleplayerPause()` → `GameManager.Pause()` + pause panel
+- `void UIManager::ReleaseSingleplayerPause()` / `ResetSingleplayerPause()`
+- `void GameManager::Pause()` → `Time.timeScale = 0`
+- `void GameManager::Unpause()` → `Time.timeScale = 1`
+- Call sites: `UIEscapeMenu.ShowMainPanel`, buff/building panels via `ShouldSingleplayerPause`
+
+Mod patches: force `ShouldSingleplayerPause` false, skip `RequestSingleplayerPause` /
+`GameManager.Pause` while `GameFacades.IsActive`, and keep `timeScale` at 1 during match tick.
+
 ## Solo run start and detection
 
 Assembly metadata strings identified:

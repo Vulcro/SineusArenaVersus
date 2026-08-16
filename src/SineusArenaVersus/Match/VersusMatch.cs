@@ -119,6 +119,7 @@ public sealed class VersusMatch : IDisposable
         AttachGameEvents();
         State = VersusMatchState.InMatch;
         GameFacades.IsActive = true;
+        VersusPauseGate.ForceRealtimeClock();
         return true;
     }
 
@@ -128,6 +129,9 @@ public sealed class VersusMatch : IDisposable
             throw new ArgumentOutOfRangeException(nameof(dt));
         if (!IsActive)
             return;
+
+        // Co-op-style: menus must never freeze local sim during Versus.
+        VersusPauseGate.EnsureRealtimeIfNeeded();
 
         _hostTime += dt;
         if (State == VersusMatchState.InMatch)
