@@ -14,3 +14,12 @@ Branch: `feat/versus-v1`
 
 `rtk dotnet test "SineusArenaVersus.sln"`  
 Result: **59 passed, 0 failed, 0 skipped, 0 warnings** (1.8 s).
+
+## Re-review fixes after `ee8160b`
+
+- Invite handling now waits for Facepunch lobby metadata refresh completion before checking `versus=1` and joining.
+- Client purchases send reliable pre-spend VP proof before `QueueSend`; every host rejection emits a reliable refund.
+- Non-finite and non-positive host wave intervals fall back to the validated local configuration; invalid fallback configuration is rejected.
+
+`rtk dotnet test "SineusArenaVersus.sln"`  
+Result: **69 passed, 0 failed, 0 skipped, 0 warnings** (1.7 s).

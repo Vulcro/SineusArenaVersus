@@ -126,6 +126,18 @@ public sealed class VersusLobby : IDisposable
     internal static bool IsVersusLobby(string? value) =>
         string.Equals(value, "1", StringComparison.Ordinal);
 
+    internal static async Task<bool> RefreshAndCheckVersusAsync(
+        Func<Task<bool>> refresh,
+        Func<string?> readVersusData)
+    {
+        if (refresh is null)
+            throw new ArgumentNullException(nameof(refresh));
+        if (readVersusData is null)
+            throw new ArgumentNullException(nameof(readVersusData));
+
+        return await refresh() && IsVersusLobby(readVersusData());
+    }
+
     public void Dispose()
     {
         if (_disposed)
@@ -144,7 +156,9 @@ public sealed class VersusLobby : IDisposable
         {
             if (_disposed)
                 return;
-            if (!IsVersusLobby(lobby.GetData(VersusDataKey)))
+            if (!await RefreshAndCheckVersusAsync(
+                    () => RefreshLobbyAsync(lobby),
+                    () => lobby.GetData(VersusDataKey)))
                 return;
             var result = await lobby.Join();
             if (result != RoomEnter.Success)
@@ -157,6 +171,29 @@ public sealed class VersusLobby : IDisposable
         catch (Exception exception)
         {
             LobbyError?.Invoke(exception);
+        }
+    }
+
+    private static async Task<bool> RefreshLobbyAsync(SteamLobby lobby)
+    {
+        var completion = new TaskCompletionSource<bool>();
+
+        void HandleLobbyDataChanged(SteamLobby refreshedLobby)
+        {
+            if (refreshedLobby.Id == lobby.Id)
+                completion.TrySetResult(true);
+        }
+
+        SteamMatchmaking.OnLobbyDataChanged += HandleLobbyDataChanged;
+        try
+        {
+            if (!lobby.Refresh())
+                return false;
+            return await completion.Task;
+        }
+        finally
+        {
+            SteamMatchmaking.OnLobbyDataChanged -= HandleLobbyDataChanged;
         }
     }
 

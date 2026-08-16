@@ -206,6 +206,36 @@ public sealed class VersusMatchTests
         Assert.Equal(6f, match.WaveSecondsRemaining);
     }
 
+    [Theory]
+    [InlineData(float.NaN)]
+    [InlineData(float.PositiveInfinity)]
+    [InlineData(float.NegativeInfinity)]
+    [InlineData(0f)]
+    [InlineData(-1f)]
+    public void Invalid_host_wave_interval_falls_back_to_local_config(float invalidInterval)
+    {
+        using var match = CreateMatch(FundedEconomy(), waveInterval: () => 99f);
+
+        Assert.True(match.StartMatch(
+            new[] { LocalPeer, RivalPeer },
+            isHost: false,
+            waveInterval: invalidInterval));
+
+        Assert.Equal(99f, match.WaveIntervalSeconds);
+    }
+
+    [Fact]
+    public void Invalid_host_and_local_wave_intervals_are_rejected()
+    {
+        using var match = CreateMatch(FundedEconomy(), waveInterval: () => float.NaN);
+
+        Assert.Throws<System.InvalidOperationException>(() =>
+            match.StartMatch(
+                new[] { LocalPeer, RivalPeer },
+                isHost: false,
+                waveInterval: float.PositiveInfinity));
+    }
+
     [Fact]
     public void Promoted_host_finishes_match_after_original_host_disconnects()
     {

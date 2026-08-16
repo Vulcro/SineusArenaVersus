@@ -71,7 +71,10 @@ public sealed class VersusNet : IDisposable
         if (!_match.StartMatch(peerArray, isHost: true, waveInterval))
             return false;
 
-        var packet = VersusSerializer.Serialize(new MatchStartMsg(lobbyId, waveInterval, peerArray));
+        var packet = VersusSerializer.Serialize(new MatchStartMsg(
+            lobbyId,
+            _match.WaveIntervalSeconds,
+            peerArray));
         Broadcast(VersusOpcode.MatchStart, packet, peerArray);
         return true;
     }
@@ -301,10 +304,7 @@ public sealed class VersusNet : IDisposable
         if (currentVp == _lastReportedVp && _vpReportTimer < VpReportIntervalSeconds)
             return;
 
-        _vpReportTimer %= VpReportIntervalSeconds;
-        _lastReportedVp = currentVp;
-        SendTo(_hostPeerId, VersusOpcode.VpReport, VersusSerializer.Serialize(
-            new VpReportMsg(_transport.LocalPeerId, currentVp)));
+        SendVpReport(currentVp);
     }
 
     private void HandleQueueSendRequested(QueueSendMsg message)
@@ -312,7 +312,12 @@ public sealed class VersusNet : IDisposable
         if (IsHost)
             _match.OnQueueSendValidated(message);
         else
+        {
+            if (!_match.Catalog.TryGet(message.CatalogId, out var offering))
+                throw new InvalidOperationException($"Unknown local send catalog id '{message.CatalogId}'.");
+            SendVpReport(checked(_match.Economy.Vp + offering.Cost));
             SendTo(_hostPeerId, VersusOpcode.QueueSend, VersusSerializer.Serialize(message));
+        }
     }
 
     private void HandleSendAcceptedForRelay(QueueSendMsg message)
@@ -380,6 +385,14 @@ public sealed class VersusNet : IDisposable
     }
 
     private static bool IsReliable(VersusOpcode opcode) => opcode != VersusOpcode.RivalSnap;
+
+    private void SendVpReport(int vp)
+    {
+        _vpReportTimer = 0f;
+        _lastReportedVp = vp;
+        SendTo(_hostPeerId, VersusOpcode.VpReport, VersusSerializer.Serialize(
+            new VpReportMsg(_transport.LocalPeerId, vp)));
+    }
 
     private ulong? FindLowestSurvivingPeer()
     {

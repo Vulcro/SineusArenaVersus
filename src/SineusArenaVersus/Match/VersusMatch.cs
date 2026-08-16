@@ -73,7 +73,7 @@ public sealed class VersusMatch : IDisposable
     public VersusEconomy Economy => _economy;
     public VersusCatalog Catalog => _catalog;
     public int WaveIndex { get; private set; }
-    public float WaveIntervalSeconds => RequirePositiveInterval(_hostWaveInterval ?? _waveInterval(), "wave");
+    public float WaveIntervalSeconds => RequireValidInterval(_hostWaveInterval ?? _waveInterval(), "wave");
     public float WaveSecondsRemaining => Math.Max(0f, WaveIntervalSeconds - _waveTimer);
     public ulong? WinnerPeerId { get; private set; }
     public IReadOnlyDictionary<ulong, PeerState> Peers => _peers;
@@ -95,8 +95,7 @@ public sealed class VersusMatch : IDisposable
             throw new InvalidOperationException($"Cannot start a match from state {State}.");
         if (!peers.Contains(_localPeerId))
             throw new ArgumentException("Peer list must contain the local peer.", nameof(peers));
-        if (waveInterval.HasValue)
-            RequirePositiveInterval(waveInterval.Value, "wave");
+        var resolvedWaveInterval = ResolveWaveInterval(waveInterval);
         if (!_soloRunLauncher.TryStartSoloRun() && !_soloRunLauncher.IsSoloRunActive())
             return false;
 
@@ -116,7 +115,7 @@ public sealed class VersusMatch : IDisposable
         WaveIndex = 0;
         WinnerPeerId = null;
         _isHost = isHost;
-        _hostWaveInterval = waveInterval;
+        _hostWaveInterval = resolvedWaveInterval;
         AttachGameEvents();
         State = VersusMatchState.InMatch;
         GameFacades.IsActive = true;
@@ -212,18 +211,24 @@ public sealed class VersusMatch : IDisposable
             offering.Count != send.Count ||
             !_peers.ContainsKey(send.From) ||
             !_peers.TryGetValue(send.To, out var target))
+        {
+            RequestRejectedRefund(send);
             return false;
+        }
 
         if (_isHost && !target.IsAlive)
         {
-            RefundRequested?.Invoke(send.From, send.To);
+            RequestRejectedRefund(send);
             return false;
         }
 
         if (_isHost && send.From != _localPeerId)
         {
             if (!_peerVp.TryGetValue(send.From, out var availableVp) || availableVp < offering.Cost)
+            {
+                RequestRejectedRefund(send);
                 return false;
+            }
             _peerVp[send.From] = availableVp - offering.Cost;
         }
 
@@ -344,7 +349,7 @@ public sealed class VersusMatch : IDisposable
 
     private void TickPassiveIncome()
     {
-        var interval = RequirePositiveInterval(_passiveInterval(), "passive");
+        var interval = RequireValidInterval(_passiveInterval(), "passive");
         while (_passiveTimer >= interval)
         {
             _passiveTimer -= interval;
@@ -352,11 +357,27 @@ public sealed class VersusMatch : IDisposable
         }
     }
 
-    private static float RequirePositiveInterval(float interval, string name)
+    private float ResolveWaveInterval(float? requested)
     {
-        if (interval <= 0f)
-            throw new InvalidOperationException($"Configured {name} interval must be positive.");
+        if (requested.HasValue && IsValidInterval(requested.Value))
+            return requested.Value;
+        return RequireValidInterval(_waveInterval(), "wave");
+    }
+
+    private static bool IsValidInterval(float interval) =>
+        !float.IsNaN(interval) && !float.IsInfinity(interval) && interval > 0f;
+
+    private static float RequireValidInterval(float interval, string name)
+    {
+        if (!IsValidInterval(interval))
+            throw new InvalidOperationException($"Configured {name} interval must be finite and positive.");
         return interval;
+    }
+
+    private void RequestRejectedRefund(QueueSendMsg send)
+    {
+        if (_isHost)
+            RefundRequested?.Invoke(send.From, send.To);
     }
 
     private void AttachGameEvents()

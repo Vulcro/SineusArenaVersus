@@ -36,7 +36,7 @@ public sealed class VersusNetTests
     }
 
     [Fact]
-    public void Client_routes_local_queue_request_only_to_host()
+    public void Client_reports_pre_spend_vp_before_queue_request()
     {
         var economy = FundedEconomy();
         using var match = CreateMatch(Client, economy);
@@ -46,8 +46,14 @@ public sealed class VersusNetTests
 
         Assert.True(match.TryQueueSend(Host, "swarm"));
 
-        var sent = Assert.Single(transport.Sent);
-        AssertSend(sent, Host, VersusOpcode.QueueSend, reliable: true);
+        Assert.Collection(
+            transport.Sent,
+            report =>
+            {
+                AssertSend(report, Host, VersusOpcode.VpReport, reliable: true);
+                Assert.Equal(new VpReportMsg(Client, 15), VersusSerializer.DeserializeVpReport(report.Payload));
+            },
+            queue => AssertSend(queue, Host, VersusOpcode.QueueSend, reliable: true));
     }
 
     [Fact]
@@ -78,6 +84,19 @@ public sealed class VersusNetTests
 
         Assert.Equal(VersusMatchState.Idle, match.State);
         Assert.Empty(transport.Sent);
+    }
+
+    [Fact]
+    public void Host_broadcasts_fallback_interval_when_configured_value_is_invalid()
+    {
+        using var match = CreateMatch(Host);
+        var transport = new FakeTransport(Host);
+        using var net = new VersusNet(match, transport, Host);
+
+        Assert.True(net.StartMatchAsHost(99, new[] { Host, Client }, float.NaN));
+
+        var sent = Assert.Single(transport.Sent);
+        Assert.Equal(20f, VersusSerializer.DeserializeMatchStart(sent.Payload).WaveInterval);
     }
 
     [Fact]
@@ -226,6 +245,25 @@ public sealed class VersusNetTests
 
         Assert.Equal(5, hostMatch.PeerVp[Client]);
         Assert.Single(hostMatch.IncomingQueue);
+    }
+
+    [Fact]
+    public void Host_refunds_rejected_remote_send()
+    {
+        using var match = CreateMatch(Host);
+        var transport = new FakeTransport(Host);
+        using var net = new VersusNet(match, transport, Host);
+        match.StartMatch(new[] { Host, Client }, isHost: true);
+        match.OnVpReport(Client, 0);
+        transport.Enqueue(Client, VersusSerializer.Serialize(
+            new QueueSendMsg(Client, Host, "swarm", 8)));
+
+        net.Pump(0f);
+
+        var refund = Assert.Single(transport.Sent);
+        AssertSend(refund, Client, VersusOpcode.Refund, reliable: true);
+        Assert.Equal(Host, VersusSerializer.DeserializePeer(refund.Payload).PeerId);
+        Assert.Empty(match.IncomingQueue);
     }
 
     [Fact]
