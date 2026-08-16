@@ -29,6 +29,7 @@ public sealed class SendRadialMenu
     private int _targetIndex;
     private bool _denyFlash;
     private bool _stickLatched;
+    private bool _openedThisFrame;
     private Vector2 _latchedPointer;
     private Vector2 _anchorScreenPoint;
 
@@ -90,7 +91,10 @@ public sealed class SendRadialMenu
             if (IsOpen)
                 SetOpen(false);
             else if (CanOpen(match))
+            {
                 SetOpen(true);
+                _openedThisFrame = true;
+            }
             if (IsOpen)
                 UpdateHighlight(frame, match);
             return;
@@ -99,12 +103,17 @@ public sealed class SendRadialMenu
         if (!IsOpen)
             return;
 
-        // Vanilla RMB re-locked the cursor — dismiss radial (camera already restored by game).
-        if (VersusGameCursor.TryGetIsCursorLocked(out var locked) && locked)
+        // RMB re-locked the cursor — dismiss radial (camera already restored by game).
+        // Skip the frame that opened the radial: Update runs before OnGUI applies unlock.
+        if (!_openedThisFrame &&
+            VersusGameCursor.TryGetIsCursorLocked(out var locked) &&
+            locked)
         {
             SetOpen(false);
             return;
         }
+
+        _openedThisFrame = false;
 
         if (frame.CancelEdge)
         {
@@ -276,6 +285,7 @@ public sealed class SendRadialMenu
         {
             _denyFlash = false;
             _stickLatched = false;
+            _openedThisFrame = false;
         }
     }
 

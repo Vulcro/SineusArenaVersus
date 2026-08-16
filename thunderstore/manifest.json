@@ -1,6 +1,6 @@
 {
   "name": "SineusArenaVersus",
-  "version_number": "0.1.19",
+  "version_number": "0.1.20",
   "website_url": "https://github.com/DocFowks/SineusArenaVersus",
   "description": "Versus mode: independent solo arenas, VP monster sends, last stronghold standing.",
   "dependencies": [
