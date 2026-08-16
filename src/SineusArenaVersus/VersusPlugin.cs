@@ -2,6 +2,7 @@ using BepInEx;
 using BepInEx.Logging;
 using HarmonyLib;
 using SineusArenaVersus.Catalog;
+using SineusArenaVersus.Dev;
 using SineusArenaVersus.Economy;
 using SineusArenaVersus.Game;
 using SineusArenaVersus.Hud;
@@ -20,7 +21,7 @@ public sealed class VersusPlugin : BaseUnityPlugin
 {
     public const string PluginGuid = "Fowks.SineusArenaVersus";
     public const string PluginName = "Sineus Arena Versus";
-    public const string PluginVersion = "0.1.9";
+    public const string PluginVersion = "0.1.10";
 
     internal static VersusPlugin Instance { get; private set; } = null!;
     internal static ManualLogSource Log => Instance.Logger;
@@ -43,7 +44,12 @@ public sealed class VersusPlugin : BaseUnityPlugin
         _hud = gameObject.AddComponent<VersusHud>();
         _hud.LeaveMatchRequested += LeaveActiveMatch;
         _menu = gameObject.AddComponent<VersusMenu>();
-        _menu.Initialize(() => ActiveLobby, () => ActiveMatch, _hud, TryEnsureSteam);
+        _menu.Initialize(
+            () => ActiveLobby,
+            () => ActiveMatch,
+            _hud,
+            TryEnsureSteam,
+            StartSoloDevTest);
         _harmony = new Harmony(PluginGuid);
         _harmony.PatchAll();
         VersusNet.StartCoroutine = routine => StartCoroutine(routine);
@@ -133,32 +139,19 @@ public sealed class VersusPlugin : BaseUnityPlugin
 
     private void StartOfflineMatch()
     {
-        var localPeerId = VersusConfig.DebugLocalPeerId.Value;
-        var rivalPeerId = VersusConfig.DebugRivalPeerId.Value;
-        if (localPeerId == rivalPeerId)
-            throw new System.InvalidOperationException("Offline local and rival peer ids must differ.");
+        if (!SoloDevTest.TryStart(out var error))
+            Logger.LogError(error ?? "Offline Versus start failed.");
+        else
+            SyncHudBinding();
+    }
 
-        var economy = new VersusEconomy(
-            VersusConfig.PassiveBase.Value,
-            VersusConfig.PassivePerSuccessfulSend.Value,
-            () => VersusConfig.VpTrash.Value,
-            () => VersusConfig.VpElite.Value,
-            () => VersusConfig.VpBoss.Value);
-        var match = new VersusMatch(
-            localPeerId,
-            economy,
-            VersusCatalog.Load(),
-            redirectTargetsToLocal: true,
-            soloRunLauncher: new ReflectionSoloRunLauncher(message => Logger.LogError(message)));
-        match.QueueSendRequested += send => match.OnQueueSendValidated(send);
-        if (!match.StartMatch(new[] { localPeerId, rivalPeerId }, isHost: true))
-        {
-            match.Dispose();
-            Logger.LogError("Offline Versus start aborted because the local solo run could not be launched.");
-            return;
-        }
-        ActiveMatch = match;
+    /// <summary>Returns null on success, otherwise an error message for the UI.</summary>
+    private string? StartSoloDevTest()
+    {
+        if (!SoloDevTest.TryStart(out var error))
+            return error;
         SyncHudBinding();
+        return null;
     }
 
     internal static void LeaveActiveMatch()

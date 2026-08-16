@@ -16,6 +16,8 @@ public static class VersusConfig
     public static ConfigEntry<string> CatalogOverridePath = null!;
     public static ConfigEntry<bool> DebugForceInject = null!;
     public static ConfigEntry<bool> DebugOfflineVersus = null!;
+    public static ConfigEntry<bool> EnableSoloDevTest = null!;
+    public static ConfigEntry<bool> SoloDevBootArena = null!;
     public static ConfigEntry<ulong> DebugLocalPeerId = null!;
     public static ConfigEntry<ulong> DebugRivalPeerId = null!;
     public static ConfigEntry<string> DebugInjectKey = null!;
@@ -37,10 +39,20 @@ public static class VersusConfig
         OpenVersusMenuKey = cfg.Bind("Versus", "OpenVersusMenuKey", "F8", "Unity KeyCode used to open Versus or collapse its HUD");
         CatalogOverridePath = cfg.Bind("Versus", "CatalogOverridePath", "", "Optional absolute path to catalog.json override");
         DebugForceInject = cfg.Bind("Debug", "DebugForceInject", false, "Enable the manual enemy inject key");
-        DebugOfflineVersus = cfg.Bind("Debug", "DebugOfflineVersus", false, "Run a local host match without Steam");
-        DebugLocalPeerId = cfg.Bind("Debug", "DebugLocalPeerId", 1UL, "Synthetic local peer id for offline Versus");
-        DebugRivalPeerId = cfg.Bind("Debug", "DebugRivalPeerId", 2UL, "Synthetic rival peer id for offline Versus");
-        DebugInjectKey = cfg.Bind("Debug", "DebugInjectKey", "F8", "Unity KeyCode used for manual enemy inject");
+        DebugOfflineVersus = cfg.Bind("Debug", "DebugOfflineVersus", false, "Auto-start offline Versus on plugin load (legacy)");
+        EnableSoloDevTest = cfg.Bind(
+            "Debug",
+            "EnableSoloDevTest",
+            false,
+            "Show Solo Dev Test in the F8 menu (local fake rival; sends inject on you)");
+        SoloDevBootArena = cfg.Bind(
+            "Debug",
+            "SoloDevBootArena",
+            true,
+            "Solo Dev Test also boots a local solo arena; if false, attach only when already in a solo run");
+        DebugLocalPeerId = cfg.Bind("Debug", "DebugLocalPeerId", 1UL, "Synthetic local peer id when Steam is unavailable");
+        DebugRivalPeerId = cfg.Bind("Debug", "DebugRivalPeerId", 2UL, "Synthetic rival peer id for Solo Dev / offline Versus");
+        DebugInjectKey = cfg.Bind("Debug", "DebugInjectKey", "F9", "Unity KeyCode used for manual enemy inject");
         DebugEnemyKey = cfg.Bind("Debug", "DebugEnemyKey", "trash", "Catalog enemyKey used for manual inject");
         DebugEnemyCount = cfg.Bind("Debug", "DebugEnemyCount", 3,
             new ConfigDescription("Manual inject pack size", new AcceptableValueRange<int>(1, 100)));

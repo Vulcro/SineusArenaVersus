@@ -1,5 +1,6 @@
 using System;
 using System.Threading.Tasks;
+using SineusArenaVersus.Dev;
 using SineusArenaVersus.Hud;
 using SineusArenaVersus.Lobby;
 using SineusArenaVersus.Match;
@@ -17,6 +18,7 @@ public sealed class VersusMenu : MonoBehaviour
     private Func<VersusLobby?>? _getLobby;
     private Func<VersusMatch?>? _getMatch;
     private Func<bool>? _ensureSteam;
+    private Func<string?>? _startSoloDevTest;
     private VersusHud? _hud;
     private Rect _windowRect = new(PanelMargin, PanelMargin, PanelWidth, PanelHeight);
     private bool _isOpen;
@@ -28,12 +30,14 @@ public sealed class VersusMenu : MonoBehaviour
         Func<VersusLobby?> getLobby,
         Func<VersusMatch?> getMatch,
         VersusHud hud,
-        Func<bool>? ensureSteam = null)
+        Func<bool>? ensureSteam = null,
+        Func<string?>? startSoloDevTest = null)
     {
         _getLobby = getLobby ?? throw new ArgumentNullException(nameof(getLobby));
         _getMatch = getMatch ?? throw new ArgumentNullException(nameof(getMatch));
         _hud = hud ?? throw new ArgumentNullException(nameof(hud));
         _ensureSteam = ensureSteam;
+        _startSoloDevTest = startSoloDevTest;
     }
 
     private void Update()
@@ -81,13 +85,35 @@ public sealed class VersusMenu : MonoBehaviour
 
     private void DrawWindow(int id)
     {
+        DrawSoloDevSection();
         DrawLobbyPanel(_getLobby?.Invoke());
+    }
+
+    private void DrawSoloDevSection()
+    {
+        if (!SoloDevTest.IsEnabled || _startSoloDevTest is null)
+            return;
+
+        GUILayout.Label("Solo Dev Test (local fake rival)");
+        GUILayout.Label("Sends inject on you. No Steam friend required.");
+        if (GUILayout.Button("Start Solo Dev Versus"))
+        {
+            _error = null;
+            var fail = _startSoloDevTest();
+            if (fail is not null)
+                _error = fail;
+            else
+                _isOpen = false;
+        }
+
+        GUILayout.Space(10f);
     }
 
     private void DrawLobbyPanel(VersusLobby? lobby)
     {
         if (lobby is null)
         {
+            GUILayout.Label("Steam Friends lobby");
             GUILayout.Label("Steam is unavailable.");
             GUILayout.Label("Wait for lobby Steam init, then Retry.");
             if (GUILayout.Button("Retry Steam"))
