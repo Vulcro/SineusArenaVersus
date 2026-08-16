@@ -64,9 +64,10 @@ This package was created with significant assistance from generative AI / LLM ag
 
 ## Changelog
 
-### 0.1.8
+### 0.1.9
 - Isolate each Versus player into their own solo NGO session (leave shared lobby, kick remote clients) before arena load
 - Unlock cursor while Versus menu / HUD is visible
+- Broadcast MatchStart before isolating so both players receive the start signal
 
 ### 0.1.7
 - Start Versus boots a local solo arena per player (no shared co-op NGO session)

@@ -1,4 +1,5 @@
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.IO;
 using SineusArenaVersus.Match;
@@ -20,6 +21,11 @@ public sealed class VersusNet : IDisposable
 {
     public const float DefaultSnapshotIntervalSeconds = 1f / 3f;
     public const float VpReportIntervalSeconds = 1f;
+
+    /// <summary>
+    /// Optional Unity coroutine starter (set by the plugin). Tests leave this null for sync start.
+    /// </summary>
+    public static Func<IEnumerator, object?>? StartCoroutine { get; set; }
 
     private readonly VersusMatch _match;
     private readonly IVersusTransport _transport;
@@ -77,20 +83,23 @@ public sealed class VersusNet : IDisposable
         var packet = VersusSerializer.Serialize(new MatchStartMsg(lobbyId, resolvedWave, peerArray));
         Broadcast(VersusOpcode.MatchStart, packet, peerArray);
 
-        // In-game: delay solo isolation so MatchStart can flush. Tests run sync (no plugin instance).
-        if (VersusPlugin.Instance is null)
+        // In-game: delay solo isolation so MatchStart can flush. Tests run sync (no coroutine starter).
+        if (StartCoroutine is null)
             return _match.StartMatch(peerArray, isHost: true, resolvedWave);
 
-        VersusPlugin.Instance.StartCoroutine(HostSoloAfterNotify(peerArray, resolvedWave));
+        StartCoroutine(HostSoloAfterNotify(peerArray, resolvedWave));
         return true;
     }
 
-    private System.Collections.IEnumerator HostSoloAfterNotify(ulong[] peerArray, float waveInterval)
+    private IEnumerator HostSoloAfterNotify(ulong[] peerArray, float waveInterval)
     {
         yield return null;
         yield return null;
         if (!_match.StartMatch(peerArray, isHost: true, waveInterval))
-            VersusPlugin.Log.LogError("Versus host solo boot failed after MatchStart broadcast.");
+        {
+            // Logging without referencing BepInEx / VersusPlugin (keeps unit tests loadable).
+            UnityEngine.Debug.LogError("[SineusArenaVersus] Versus host solo boot failed after MatchStart broadcast.");
+        }
     }
 
     public void Pump(float deltaTime)

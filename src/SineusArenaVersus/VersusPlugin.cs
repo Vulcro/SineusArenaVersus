@@ -20,7 +20,7 @@ public sealed class VersusPlugin : BaseUnityPlugin
 {
     public const string PluginGuid = "Fowks.SineusArenaVersus";
     public const string PluginName = "Sineus Arena Versus";
-    public const string PluginVersion = "0.1.8";
+    public const string PluginVersion = "0.1.9";
 
     internal static VersusPlugin Instance { get; private set; } = null!;
     internal static ManualLogSource Log => Instance.Logger;
@@ -46,6 +46,7 @@ public sealed class VersusPlugin : BaseUnityPlugin
         _menu.Initialize(() => ActiveLobby, () => ActiveMatch, _hud, TryEnsureSteam);
         _harmony = new Harmony(PluginGuid);
         _harmony.PatchAll();
+        VersusNet.StartCoroutine = routine => StartCoroutine(routine);
         _steam = new SteamBootstrap(
             exception => Logger.LogError($"Steam error: {exception}"),
             message => Logger.LogInfo(message));
@@ -103,6 +104,7 @@ public sealed class VersusPlugin : BaseUnityPlugin
         ActiveLobby = null;
         ActiveMatch = null;
         _hud?.Bind(null);
+        VersusNet.StartCoroutine = null;
         _harmony?.UnpatchSelf();
     }
 
