@@ -6,6 +6,9 @@ namespace SineusArenaVersus.Ui;
 /// </summary>
 internal static class VersusCursor
 {
+    /// <summary>
+    /// Only used by lobby menu / match end screen — never during match HUD.
+    /// </summary>
     public static void UnlockForUi()
     {
         if (!VersusGameCursor.TrySetCursorLock(false))
