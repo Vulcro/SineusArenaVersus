@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text;
 using SineusArenaVersus.Match;
 using SineusArenaVersus.Spectate;
 using SineusArenaVersus.Ui;
@@ -8,21 +9,26 @@ using UnityEngine;
 
 namespace SineusArenaVersus.Hud;
 
+/// <summary>
+/// Slim Versus match chrome: rival strip + compact status strip (no floating shop window).
+/// </summary>
 public sealed class VersusHud : MonoBehaviour
 {
-    private const float PanelWidth = 280f;
+    private const float StatusWidth = 260f;
+    private const float StatusHeight = 118f;
     private const float RivalCardWidth = 150f;
     private const float RivalCardHeight = 72f;
     private const float RivalCardGap = 8f;
+    private const float Margin = 12f;
 
     private VersusMatch? _match;
     private VersusSpectate? _spectate;
     private readonly SendRadialMenu _radial = new();
+    private readonly StringBuilder _incomingBuilder = new(64);
     private int _targetIndex;
     private ulong[] _livingTargets = Array.Empty<ulong>();
     private bool _collapsed;
-    private Rect _sidePanelRect = new(0f, 12f, PanelWidth, 420f);
-    private const int SideWindowId = 0x56525332; // VRS2
+    private Rect _statusRect = new(Margin, 0f, StatusWidth, StatusHeight);
 
     public event Action? LeaveMatchRequested;
     public int TargetIndex => _targetIndex;
@@ -70,7 +76,7 @@ public sealed class VersusHud : MonoBehaviour
         if (!_collapsed)
         {
             DrawRivalStrip();
-            DrawSidePanel();
+            DrawStatusStrip();
         }
 
         _radial.Draw();
@@ -98,95 +104,80 @@ public sealed class VersusHud : MonoBehaviour
         {
             var rect = new Rect(
                 startX + i * (RivalCardWidth + RivalCardGap),
-                12f,
+                Margin,
                 RivalCardWidth,
                 RivalCardHeight);
-            var selected = rivals[i].PeerId == selectedId;
-            if (selected)
-                VersusUiTheme.DrawFilled(rect, VersusUiTheme.HoverFill);
             RivalCardView.Draw(rect, rivals[i], RivalCardView.FormatPeerName(rivals[i].PeerId));
+            if (rivals[i].PeerId == selectedId)
+                VersusUiTheme.DrawBorder(rect, VersusUiTheme.Accent, 2f);
             TrySelectRivalFromClick(rect, rivals[i].PeerId);
         }
     }
 
-    private void DrawSidePanel()
+    private void DrawStatusStrip()
     {
         if (_match!.State is VersusMatchState.Eliminated or VersusMatchState.Ended)
             return;
 
-        if (_sidePanelRect.x <= 0f)
-            _sidePanelRect.x = Screen.width - PanelWidth - 12f;
-        _sidePanelRect.width = PanelWidth;
-        _sidePanelRect.height = Mathf.Min(520f, Screen.height - 24f);
-        _sidePanelRect = VersusImguiWindow.Draw(SideWindowId, _sidePanelRect, DrawSideWindow, "Versus HUD");
-    }
+        _statusRect = new Rect(
+            Margin,
+            Screen.height - StatusHeight - Margin,
+            StatusWidth,
+            StatusHeight);
+        VersusUiTheme.DrawPanel(_statusRect, highlighted: false);
 
-    private void DrawSideWindow(int id)
-    {
-        DrawInfoPanel();
-        DrawSpectatePanel();
-        DrawPreviewPanel();
-    }
-
-    private void DrawInfoPanel()
-    {
-        var economy = _match!.Economy;
-        GUILayout.Label($"VP: {economy.Vp}");
-        GUILayout.Label($"Passive: +{economy.PassiveAmountPerTick} / {VersusConfig.PassiveIntervalSeconds.Value:0.#}s");
-        GUILayout.Space(6f);
+        var economy = _match.Economy;
+        var y = _statusRect.y + 8f;
+        var x = _statusRect.x + 10f;
+        var w = _statusRect.width - 20f;
+        var prev = GUI.color;
+        GUI.color = VersusUiTheme.Text;
+        GUI.Label(new Rect(x, y, w, 18f), $"VP {economy.Vp}   ·   +{economy.PassiveAmountPerTick}/tick");
+        y += 18f;
+        GUI.Label(
+            new Rect(x, y, w, 18f),
+            $"Wave {_match.WaveIndex + 1}  ·  {_match.WaveSecondsRemaining:0.#}s");
+        y += 18f;
 
         RefreshLivingTargets();
-        if (_livingTargets.Length == 0)
-        {
-            GUILayout.Label("No living rivals");
-            return;
-        }
+        var targetLine = _livingTargets.Length == 0
+            ? "Target —"
+            : $"Target  {RivalCardView.FormatPeerName(_livingTargets[Mathf.Clamp(_targetIndex, 0, _livingTargets.Length - 1)])}";
+        GUI.color = VersusUiTheme.Accent;
+        GUI.Label(new Rect(x, y, w, 18f), targetLine);
+        y += 20f;
 
-        _targetIndex = Mathf.Clamp(_targetIndex, 0, _livingTargets.Length - 1);
-        GUILayout.Label($"Target: {RivalCardView.FormatPeerName(_livingTargets[_targetIndex])}");
+        GUI.color = VersusUiTheme.Muted;
+        GUI.Label(new Rect(x, y, w, 36f), FormatIncomingLine());
+        GUI.color = prev;
+
+        if (_spectate is not null && VersusConfig.EnableSpectateViews.Value)
+        {
+            var toggleRect = new Rect(x, _statusRect.yMax - 22f, w, 18f);
+            _spectate.ShowMiniView = GUI.Toggle(toggleRect, _spectate.ShowMiniView, "Mini view");
+        }
     }
 
-    private void DrawSpectatePanel()
+    private string FormatIncomingLine()
     {
-        if (_spectate is null)
-            return;
+        if (_match!.IncomingPreview.Count == 0)
+            return "Incoming  none";
 
-        GUILayout.Space(8f);
-        GUILayout.Label("Spectate (0.2.0 polish)");
-        GUI.enabled = VersusConfig.EnableSpectateViews.Value && _match!.IsActive;
-        var nextShow = GUILayout.Toggle(_spectate.ShowMiniView, "Mini rival view");
-        if (GUI.enabled)
-        {
-            if (nextShow && !_spectate.ShowMiniView && _livingTargets.Length > 0)
-                _spectate.SetFocusedPeer(_livingTargets[_targetIndex]);
-            else if (!nextShow)
-                _spectate.ClearFocusedPeer();
-            _spectate.ShowMiniView = nextShow;
-        }
-
-        GUI.enabled = true;
-        if (!VersusConfig.EnableSpectateViews.Value)
-            GUILayout.Label("Set EnableSpectateViews=true for 0.2.0 preview.");
-    }
-
-    private void DrawPreviewPanel()
-    {
-        GUILayout.Space(12f);
-        GUILayout.Label($"Wave {_match!.WaveIndex + 1} in {_match.WaveSecondsRemaining:0.#}s");
-        GUILayout.Label("Incoming");
-        if (_match.IncomingPreview.Count == 0)
-        {
-            GUILayout.Label("None");
-            return;
-        }
-
+        _incomingBuilder.Clear();
+        _incomingBuilder.Append("Incoming  ");
+        var first = true;
         foreach (var entry in _match.IncomingPreview.OrderBy(pair => pair.Key, StringComparer.OrdinalIgnoreCase))
         {
-            var label = _match.Catalog.TryGet(entry.Key, out var offering)
-                ? $"{offering.DisplayName} x{entry.Value}"
-                : $"{entry.Key} x{entry.Value}";
-            GUILayout.Label(label);
+            if (!first)
+                _incomingBuilder.Append(" · ");
+            first = false;
+            if (_match.Catalog.TryGet(entry.Key, out var offering))
+                _incomingBuilder.Append(offering.DisplayName).Append(' ').Append('x').Append(entry.Value);
+            else
+                _incomingBuilder.Append(entry.Key).Append(' ').Append('x').Append(entry.Value);
         }
+
+        return _incomingBuilder.ToString();
     }
 
     private void DrawOverlay()
@@ -206,7 +197,7 @@ public sealed class VersusHud : MonoBehaviour
             (Screen.height - boxHeight) * 0.5f,
             boxWidth,
             boxHeight);
-        GUI.Box(boxRect, GUIContent.none);
+        VersusUiTheme.DrawPanel(boxRect, highlighted: true);
 
         var title = _match.State switch
         {
@@ -216,9 +207,9 @@ public sealed class VersusHud : MonoBehaviour
             _ => "Match Over"
         };
 
-        GUI.Label(
-            new Rect(boxRect.x, boxRect.y + 24f, boxRect.width, 40f),
-            title);
+        GUI.color = VersusUiTheme.Text;
+        GUI.Label(new Rect(boxRect.x + 16f, boxRect.y + 24f, boxRect.width - 32f, 40f), title);
+        GUI.color = previousColor;
 
         if (GUI.Button(new Rect(boxRect.x + 80f, boxRect.y + 100f, boxRect.width - 160f, 32f), "Return to Lobby"))
             LeaveMatchRequested?.Invoke();
@@ -252,30 +243,20 @@ public sealed class VersusHud : MonoBehaviour
         if (TryComputeRivalStripRect(out var strip))
             rects.Add(strip);
 
-        var side = _sidePanelRect;
-        if (side.x <= 0f)
-        {
-            try
-            {
-                side.x = Screen.width - PanelWidth - 12f;
-            }
-            catch (Exception)
-            {
-                return rects;
-            }
-        }
-
-        side.width = PanelWidth;
         try
         {
-            side.height = Mathf.Min(520f, Screen.height - 24f);
+            _statusRect = new Rect(
+                Margin,
+                Screen.height - StatusHeight - Margin,
+                StatusWidth,
+                StatusHeight);
         }
         catch (Exception)
         {
-            side.height = 420f;
+            _statusRect = new Rect(Margin, 600f, StatusWidth, StatusHeight);
         }
 
-        rects.Add(side);
+        rects.Add(_statusRect);
         return rects;
     }
 
@@ -310,7 +291,7 @@ public sealed class VersusHud : MonoBehaviour
 
         var totalWidth = rivalCount * RivalCardWidth + (rivalCount - 1) * RivalCardGap;
         var startX = (screenWidth - totalWidth) * 0.5f;
-        rect = new Rect(startX, 12f, totalWidth, RivalCardHeight);
+        rect = new Rect(startX, Margin, totalWidth, RivalCardHeight);
         return true;
     }
 

@@ -19,4 +19,20 @@ public static class VersusUiTheme
         GUI.DrawTexture(rect, Texture2D.whiteTexture);
         GUI.color = prev;
     }
+
+    public static void DrawBorder(Rect rect, Color edge, float thickness = 2f)
+    {
+        DrawFilled(new Rect(rect.x, rect.y, rect.width, thickness), edge);
+        DrawFilled(new Rect(rect.x, rect.yMax - thickness, rect.width, thickness), edge);
+        DrawFilled(new Rect(rect.x, rect.y, thickness, rect.height), edge);
+        DrawFilled(new Rect(rect.xMax - thickness, rect.y, thickness, rect.height), edge);
+    }
+
+    public static void DrawPanel(Rect rect, bool highlighted)
+    {
+        DrawFilled(rect, PanelBg);
+        DrawBorder(rect, highlighted ? Accent : PanelBorder);
+        if (highlighted)
+            DrawFilled(new Rect(rect.x + 2f, rect.y + 2f, rect.width - 4f, 3f), HoverFill);
+    }
 }

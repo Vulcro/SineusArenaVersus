@@ -8,7 +8,7 @@ namespace SineusArenaVersus.Hud;
 
 public sealed class SendRadialLayout
 {
-    public float OverlayAlpha { get; set; } = 0.45f;
+    public float OverlayAlpha { get; set; } = 0.28f;
     public float RadiusFraction { get; set; } = 0.28f;
     public float ButtonWidth { get; set; } = 108f;
     public float ButtonHeight { get; set; } = 48f;
@@ -141,14 +141,17 @@ public sealed class SendRadialMenu
                 _layout.ButtonHeight);
 
             var affordable = SendRadialLogic.CanConfirm(_match.ShopEnabled, vp, offering.Cost);
-            if (i == HighlightIndex)
-                VersusUiTheme.DrawFilled(rect, VersusUiTheme.HoverFill);
-
+            VersusUiTheme.DrawPanel(rect, i == HighlightIndex);
             var previous = GUI.color;
             GUI.color = affordable ? VersusUiTheme.Text : VersusUiTheme.Muted;
-            if (GUI.Button(rect, $"{offering.DisplayName}\n{offering.Cost} VP"))
-                HighlightIndex = i;
+            GUI.Label(rect, $"{offering.DisplayName}\n{offering.Cost} VP");
             GUI.color = previous;
+            if (Event.current is { type: EventType.MouseDown, button: 0 } &&
+                rect.Contains(Event.current.mousePosition))
+            {
+                HighlightIndex = i;
+                Event.current.Use();
+            }
         }
 
         var selected = HighlightIndex >= 0 && HighlightIndex < count ? offerings[HighlightIndex] : null;
@@ -163,7 +166,7 @@ public sealed class SendRadialMenu
             center.y - _layout.CenterHeight * 0.5f,
             _layout.CenterWidth,
             _layout.CenterHeight);
-        VersusUiTheme.DrawFilled(centerRect, VersusUiTheme.PanelBg);
+        VersusUiTheme.DrawPanel(centerRect, highlighted: true);
         var labelColor = _denyFlash ? VersusUiTheme.Muted : VersusUiTheme.Text;
         var previousLabel = GUI.color;
         GUI.color = labelColor;

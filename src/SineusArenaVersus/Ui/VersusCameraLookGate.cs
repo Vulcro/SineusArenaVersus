@@ -62,8 +62,8 @@ public static class VersusCameraLookGate
     {
         try
         {
+            // Discover look behaviours only on open — never rescan the scene each frame.
             VersusCursor.UnlockForUi();
-            SuppressLookBehaviours();
             Suppressor.EnsureSuppressed();
         }
         catch (Exception)
@@ -144,6 +144,7 @@ public static class VersusCameraLookGate
     {
         var found = new List<Behaviour>();
 
+        // Typed lookups only — never FindObjectsByType<MonoBehaviour>() (full-scene scan kills FPS).
         foreach (var typeName in SuppressTypeNames)
         {
             var type = AccessTools.TypeByName(typeName);
@@ -158,18 +159,6 @@ public static class VersusCameraLookGate
                 if (!ContainsBehaviour(found, behaviour))
                     found.Add(behaviour);
             }
-        }
-
-        foreach (var behaviour in UnityEngine.Object.FindObjectsByType<MonoBehaviour>())
-        {
-            if (behaviour is null || IsExcluded(behaviour))
-                continue;
-
-            if (!ShouldSuppressTypeName(behaviour.GetType().Name))
-                continue;
-
-            if (!ContainsBehaviour(found, behaviour))
-                found.Add(behaviour);
         }
 
         return found;
