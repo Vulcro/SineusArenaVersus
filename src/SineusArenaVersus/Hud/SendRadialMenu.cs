@@ -99,6 +99,13 @@ public sealed class SendRadialMenu
         if (!IsOpen)
             return;
 
+        // Vanilla RMB re-locked the cursor — dismiss radial (camera already restored by game).
+        if (VersusGameCursor.TryGetIsCursorLocked(out var locked) && locked)
+        {
+            SetOpen(false);
+            return;
+        }
+
         if (frame.CancelEdge)
         {
             SetOpen(false);

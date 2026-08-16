@@ -1,17 +1,15 @@
 using System;
 using System.Collections.Generic;
-using System.Runtime.CompilerServices;
-using UnityEngine;
 
 namespace SineusArenaVersus.Ui;
 
 /// <summary>
-/// While radial is open: free the cursor once. No scene FindObjects (was the FPS killer).
+/// Tracks radial open state and syncs mouse/camera via the game's SetCursorLock
+/// (right-click path). Does not write UnityEngine.Cursor directly.
 /// </summary>
 public static class VersusCameraLookGate
 {
     private static bool _radialOpen;
-    private static bool _unlockedThisOpen;
 
     public static bool RadialOpen => _radialOpen;
 
@@ -21,30 +19,21 @@ public static class VersusCameraLookGate
             return;
 
         _radialOpen = open;
-        _unlockedThisOpen = false;
-        // Unlock happens in Tick only — Unity Cursor ECalls break xUnit and hitch open.
+
+        // Open → free mouse / block camera (same as unlocking with RMB).
+        // Close → capture mouse / restore camera (same as locking with RMB).
+        // Never spam Cursor every frame — that blocked vanilla RMB liberation.
+        if (open)
+            VersusGameCursor.TrySetCursorLock(false);
+        else
+            VersusGameCursor.TrySetCursorLock(true);
     }
 
     public static void Tick()
     {
-        if (!_radialOpen || _unlockedThisOpen)
-            return;
-
-        TryUnlockOnce();
-    }
-
-    [MethodImpl(MethodImplOptions.NoInlining)]
-    private static void TryUnlockOnce()
-    {
-        try
-        {
-            VersusCursor.UnlockForUi();
-            _unlockedThisOpen = true;
-        }
-        catch
-        {
-            // Unity Cursor ECalls unavailable in tests / rare player edge cases.
-        }
+        // Intentionally empty: do not touch Cursor every frame.
+        // RMB remains fully owned by UIManager.Update → SetCursorLock.
+        // SendRadialMenu closes itself if the player re-locks while open.
     }
 
     internal static bool ShouldSuppressTypeName(string typeName)
@@ -52,14 +41,13 @@ public static class VersusCameraLookGate
         if (string.IsNullOrWhiteSpace(typeName))
             return false;
 
-        // Kept for unit tests / future optional suppress list — not used at runtime anymore.
         return typeName.IndexOf("MouseLook", StringComparison.OrdinalIgnoreCase) >= 0 ||
                typeName.IndexOf("CameraLook", StringComparison.OrdinalIgnoreCase) >= 0 ||
                typeName.IndexOf("CameraInputSettingsApplier", StringComparison.OrdinalIgnoreCase) >= 0 ||
                typeName.IndexOf("CinemachineInputAxisController", StringComparison.OrdinalIgnoreCase) >= 0;
     }
 
-    internal static bool TryRestoreBehaviour(Behaviour behaviour, bool wasEnabled)
+    internal static bool TryRestoreBehaviour(UnityEngine.Behaviour behaviour, bool wasEnabled)
     {
         try
         {
@@ -84,15 +72,7 @@ public static class VersusCameraLookGate
         }
     }
 
-    internal static void SetRadialOpenStateForTests(bool open)
-    {
-        _radialOpen = open;
-        _unlockedThisOpen = false;
-    }
+    internal static void SetRadialOpenStateForTests(bool open) => _radialOpen = open;
 
-    internal static void ResetForTests()
-    {
-        _radialOpen = false;
-        _unlockedThisOpen = false;
-    }
+    internal static void ResetForTests() => _radialOpen = false;
 }
