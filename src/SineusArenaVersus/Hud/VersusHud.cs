@@ -70,6 +70,8 @@ public sealed class VersusHud : MonoBehaviour
             !_match.IsActive && _match.State != VersusMatchState.Ended)
             return;
 
+        // Only unlock for eliminated / end screens — never during active match.
+        // Radial menu owns cursor/camera sync via VersusCameraLookGate.
         if (_match.State is VersusMatchState.Eliminated or VersusMatchState.Ended)
             VersusCursor.UnlockForUi();
 
