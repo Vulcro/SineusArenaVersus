@@ -1,0 +1,26 @@
+[config]
+schemaVersion = "0.0.1"
+
+[package]
+namespace = "Fowks"
+name = "SineusArenaVersus"
+description = "Versus mode: independent solo arenas, VP monster sends, last stronghold standing."
+websiteUrl = "https://github.com/Vulcro/SineusArenaVersus"
+containsNsfwContent = false
+[package.dependencies]
+"BepInEx-BepInExPack" = "5.4.2305"
+
+[build]
+icon = "./thunderstore/icon.png"
+readme = "./thunderstore/README.md"
+outdir = "./dist/tcli"
+
+[[build.copy]]
+source = "./dist/Fowks-SineusArenaVersus/BepInEx"
+target = "BepInEx"
+
+[publish]
+repository = "https://thunderstore.io"
+communities = ["sineus-arena-survivors"]
+[publish.categories]
+sineus-arena-survivors = ["mods"]

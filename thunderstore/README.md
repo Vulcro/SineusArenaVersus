@@ -46,13 +46,28 @@ Edit `BepInEx/config/Fowks.SineusArenaVersus.cfg` after first run.
 
 Debug keys under `[Debug]` for offline testing and manual inject (see config comments).
 
-## Known limitations (v0.1.0)
+## Pause behaviour
 
-- No SubViewport / mini arena spectate on rival cards yet.
+While a Versus match is active, **solo pause is disabled** (same idea as co-op): ESC / buff / building menus can open, but the arena clock keeps running so peers stay in sync.
+
+## Known limitations (v0.1.1)
+
+- No SubViewport / mini arena spectate on rival cards yet (config stub only).
 - Independent match seeds per client (no shared seed).
 - Requires Steam Friends / P2P; no dedicated relay.
 - Disconnect counts as elimination.
+- Catalog `spawnId` values may need in-game capture for reliable enemy injects.
+
+## Changelog
+
+### 0.1.1
+- Disable pause during Versus (menus without `timeScale` freeze)
+- Point `website_url` at the public GitHub repo
+- Stop shipping `steam_api64.dll` (use the game’s Steam runtime)
+
+### 0.1.0
+- Initial Versus V1: lobby, VP economy, sends, HUD, Thunderstore package
 
 ## Links
 
-- Source: https://github.com/Fowks/SineusArenaVersus
+- Source: https://github.com/Vulcro/SineusArenaVersus

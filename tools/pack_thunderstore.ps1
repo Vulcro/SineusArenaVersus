@@ -18,7 +18,8 @@ New-Item -ItemType Directory -Force -Path "$out/$pluginDir" | Out-Null
 Copy-Item thunderstore/manifest.json, thunderstore/README.md, thunderstore/icon.png $out
 Copy-Item "$buildDir/SineusArenaVersus.dll" "$out/$pluginDir/"
 
-# Runtime deps (Facepunch.Steamworks + native Steam API)
+# Runtime deps — do NOT ship steam_api64.dll (Valve redistributable / auto-mod risk).
+# The game already loads Steam; Facepunch attaches to the existing client.
 $runtimeDlls = @(
     "Facepunch.Steamworks.Win64.dll",
     "System.Text.Json.dll",
@@ -26,21 +27,26 @@ $runtimeDlls = @(
     "System.Memory.dll",
     "System.Buffers.dll",
     "System.Runtime.CompilerServices.Unsafe.dll",
-    "Microsoft.Bcl.AsyncInterfaces.dll"
+    "Microsoft.Bcl.AsyncInterfaces.dll",
+    "System.Threading.Tasks.Extensions.dll",
+    "System.Numerics.Vectors.dll",
+    "System.ValueTuple.dll"
 )
 foreach ($dll in $runtimeDlls) {
     $src = Join-Path $buildDir $dll
     if (Test-Path $src) {
         Copy-Item $src "$out/$pluginDir/"
+    } else {
+        Write-Warning "Missing runtime dep: $dll"
     }
 }
-$steamApi = Join-Path $buildDir "steam_api64.dll"
-if (Test-Path $steamApi) {
-    Copy-Item $steamApi "$out/$pluginDir/"
-} else {
-    Write-Warning "steam_api64.dll not found in $buildDir"
-}
 
-Compress-Archive -Path "$out/*" -DestinationPath $zip -Force
-Write-Host "Packed: $zip"
-Get-ChildItem $zip | Format-List Name, Length, LastWriteTime
+# Zip root must contain manifest/README/icon (not a nested folder).
+if (Test-Path $zip) { Remove-Item $zip -Force }
+Push-Location $out
+Compress-Archive -Path @("manifest.json", "README.md", "icon.png", "BepInEx") -DestinationPath (Join-Path (Get-Location) "..\Fowks-SineusArenaVersus-$version.zip") -Force
+Pop-Location
+# Normalize path (Compress wrote to dist/)
+$zipPath = (Resolve-Path "dist/Fowks-SineusArenaVersus-$version.zip").Path
+Write-Host "Packed: $zipPath"
+Get-ChildItem $zipPath | Format-List Name, Length, LastWriteTime
