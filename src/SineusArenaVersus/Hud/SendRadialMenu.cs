@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using SineusArenaVersus.Game;
 using SineusArenaVersus.Match;
 using SineusArenaVersus.Ui;
 using UnityEngine;
@@ -8,19 +9,21 @@ namespace SineusArenaVersus.Hud;
 
 public sealed class SendRadialLayout
 {
-    public float OverlayAlpha { get; set; } = 0.28f;
-    public float RadiusFraction { get; set; } = 0.28f;
-    public float ButtonWidth { get; set; } = 108f;
-    public float ButtonHeight { get; set; } = 48f;
-    public float CenterWidth { get; set; } = 220f;
-    public float CenterHeight { get; set; } = 96f;
+    public float OverlayAlpha { get; set; } = 0.12f;
+    public float RadiusFraction { get; set; } = 0.11f;
+    public float ButtonWidth { get; set; } = 78f;
+    public float ButtonHeight { get; set; } = 34f;
+    public float CenterWidth { get; set; } = 132f;
+    public float CenterHeight { get; set; } = 58f;
     public float MouseRelatchPixels { get; set; } = 12f;
+    public float LocalDimRadiusPad { get; set; } = 28f;
 }
 
 public sealed class SendRadialMenu
 {
     private readonly Func<(float Width, float Height)> _screenSize;
     private readonly Func<float> _stickDeadzone;
+    private readonly Func<Vector2> _anchorScreen;
     private readonly SendRadialLayout _layout;
 
     private VersusMatch? _match;
@@ -29,15 +32,18 @@ public sealed class SendRadialMenu
     private bool _denyFlash;
     private bool _stickLatched;
     private Vector2 _latchedPointer;
+    private Vector2 _anchorScreenPoint;
 
     public SendRadialMenu(
         Func<(float Width, float Height)>? screenSize = null,
         Func<float>? stickDeadzone = null,
-        SendRadialLayout? layout = null)
+        SendRadialLayout? layout = null,
+        Func<Vector2>? anchorScreen = null)
     {
         _screenSize = screenSize ?? ReadScreenSize;
         _stickDeadzone = stickDeadzone ?? ReadStickDeadzone;
         _layout = layout ?? new SendRadialLayout();
+        _anchorScreen = anchorScreen ?? GameFacades.GetLocalPlayerScreenPointOrCenter;
     }
 
     public bool IsOpen { get; private set; }
@@ -56,6 +62,7 @@ public sealed class SendRadialMenu
         _living = livingTargets ?? Array.Empty<ulong>();
         _targetIndex = targetIndex;
         _denyFlash = false;
+        _anchorScreenPoint = _anchorScreen();
 
         if (match is null ||
             match.State is VersusMatchState.Eliminated or VersusMatchState.Ended)
@@ -117,17 +124,21 @@ public sealed class SendRadialMenu
             return;
 
         var (width, height) = _screenSize();
-        VersusUiTheme.DrawFilled(
-            new Rect(0f, 0f, width, height),
-            new Color(0f, 0f, 0f, _layout.OverlayAlpha));
+        _anchorScreenPoint = _anchorScreen();
+        var centerGui = SendRadialLogic.ScreenToGui(_anchorScreenPoint, height);
 
         var offerings = _match.Catalog.All;
         var count = offerings.Count;
         if (count <= 0)
             return;
 
-        var center = new Vector2(width * 0.5f, height * 0.5f);
         var radius = Mathf.Min(width, height) * _layout.RadiusFraction;
+        var dimPad = Math.Max(_layout.ButtonWidth, _layout.ButtonHeight) * 0.5f + _layout.LocalDimRadiusPad;
+        var dimSize = (radius + dimPad) * 2f;
+        VersusUiTheme.DrawFilled(
+            new Rect(centerGui.x - dimSize * 0.5f, centerGui.y - dimSize * 0.5f, dimSize, dimSize),
+            new Color(0f, 0f, 0f, _layout.OverlayAlpha));
+
         var vp = _match.Economy.Vp;
 
         for (var i = 0; i < count; i++)
@@ -135,8 +146,8 @@ public sealed class SendRadialMenu
             var offering = offerings[i];
             var angle = i * (Mathf.PI * 2f / count);
             var rect = new Rect(
-                center.x + Mathf.Cos(angle) * radius - _layout.ButtonWidth * 0.5f,
-                center.y - Mathf.Sin(angle) * radius - _layout.ButtonHeight * 0.5f,
+                centerGui.x + Mathf.Cos(angle) * radius - _layout.ButtonWidth * 0.5f,
+                centerGui.y - Mathf.Sin(angle) * radius - _layout.ButtonHeight * 0.5f,
                 _layout.ButtonWidth,
                 _layout.ButtonHeight);
 
@@ -144,26 +155,29 @@ public sealed class SendRadialMenu
             VersusUiTheme.DrawPanel(rect, i == HighlightIndex);
             var previous = GUI.color;
             GUI.color = affordable ? VersusUiTheme.Text : VersusUiTheme.Muted;
-            GUI.Label(rect, $"{offering.DisplayName}\n{offering.Cost} VP");
+            GUI.Label(rect, $"{offering.DisplayName}\n{offering.Cost}");
             GUI.color = previous;
+
+            // Single left-click on a wedge: select + confirm (Update GetKeyDown alone was easy to miss).
             if (Event.current is { type: EventType.MouseDown, button: 0 } &&
                 rect.Contains(Event.current.mousePosition))
             {
                 HighlightIndex = i;
                 Event.current.Use();
+                TryConfirm(_match, _targetIndex);
             }
         }
 
         var selected = HighlightIndex >= 0 && HighlightIndex < count ? offerings[HighlightIndex] : null;
         var targetName = _targetIndex >= 0 && _targetIndex < _living.Count
             ? RivalCardView.FormatPeerName(_living[_targetIndex])
-            : "No target";
+            : "—";
         var offeringLine = selected is null
             ? "—"
-            : $"{selected.DisplayName}  {selected.Cost} VP";
+            : $"{selected.DisplayName} {selected.Cost}";
         var centerRect = new Rect(
-            center.x - _layout.CenterWidth * 0.5f,
-            center.y - _layout.CenterHeight * 0.5f,
+            centerGui.x - _layout.CenterWidth * 0.5f,
+            centerGui.y - _layout.CenterHeight * 0.5f,
             _layout.CenterWidth,
             _layout.CenterHeight);
         VersusUiTheme.DrawPanel(centerRect, highlighted: true);
@@ -207,9 +221,8 @@ public sealed class SendRadialMenu
             _stickLatched = false;
         }
 
-        var (width, height) = _screenSize();
-        var dx = frame.PointerScreen.x - width * 0.5f;
-        var dy = frame.PointerScreen.y - height * 0.5f;
+        var dx = frame.PointerScreen.x - _anchorScreenPoint.x;
+        var dy = frame.PointerScreen.y - _anchorScreenPoint.y;
         var mouseAngle = RadialMath.AngleFromVector(dx, dy);
         HighlightIndex = RadialMath.SectorIndex(mouseAngle, count);
     }
@@ -224,6 +237,8 @@ public sealed class SendRadialMenu
         var (width, height) = _screenSize();
         return SendRadialLogic.AllowsPointerConfirm(
             frame.PointerScreen,
+            _anchorScreenPoint.x,
+            _anchorScreenPoint.y,
             width,
             height,
             _layout.RadiusFraction,

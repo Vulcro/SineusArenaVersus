@@ -243,7 +243,7 @@ public sealed class SendRadialMenuTests : IDisposable
             new VersusInputFrame
             {
                 PointerConfirmEdge = true,
-                PointerScreen = new Vector2(600f, 300f)
+                PointerScreen = new Vector2(460f, 300f)
             },
             match,
             ref target,
@@ -268,12 +268,12 @@ public sealed class SendRadialMenuTests : IDisposable
             new VersusInputFrame
             {
                 PointerConfirmEdge = true,
-                PointerScreen = new Vector2(600f, 300f)
+                PointerScreen = new Vector2(460f, 300f)
             },
             match,
             ref target,
             living,
-            new[] { new Rect(500f, 200f, 200f, 200f) });
+            new[] { new Rect(400f, 250f, 120f, 100f) });
 
         Assert.False(queued.HasValue);
 
@@ -349,7 +349,10 @@ public sealed class SendRadialMenuTests : IDisposable
     }
 
     private static SendRadialMenu CreateRadial() =>
-        new(() => (800f, 600f), () => Deadzone);
+        new(
+            () => (800f, 600f),
+            () => Deadzone,
+            anchorScreen: () => new Vector2(400f, 300f));
 
     private static void AimFirstSector(
         SendRadialMenu radial,

@@ -50,6 +50,32 @@ public static class GameFacades
                ReadBoolean(flow, "IsSinglePlayer");
     }
 
+    /// <summary>
+    /// Local hero position in screen pixels (origin bottom-left, same as <see cref="Input.mousePosition"/>).
+    /// Falls back to screen center when the player/camera is unavailable.
+    /// </summary>
+    public static Vector2 GetLocalPlayerScreenPointOrCenter()
+    {
+        try
+        {
+            var transform = TryGetLocalPlayerTransform();
+            var camera = Camera.main;
+            if (transform is not null && camera is not null)
+            {
+                var world = transform.position + Vector3.up * 1.1f;
+                var screen = camera.WorldToScreenPoint(world);
+                if (screen.z > 0f)
+                    return new Vector2(screen.x, screen.y);
+            }
+
+            return new Vector2(Screen.width * 0.5f, Screen.height * 0.5f);
+        }
+        catch
+        {
+            return new Vector2(960f, 540f);
+        }
+    }
+
     public static bool TryStartSoloRun()
     {
         _soloRunLauncher ??= new ReflectionSoloRunLauncher();

@@ -39,6 +39,8 @@ public static class SendRadialLogic
     public static bool PointerInWheel(
         float pointerX,
         float pointerY,
+        float centerX,
+        float centerY,
         float screenWidth,
         float screenHeight,
         float radiusFraction,
@@ -51,8 +53,8 @@ public static class SendRadialLogic
         var radius = Math.Min(screenWidth, screenHeight) * radiusFraction;
         var extent = 0.5f * Math.Max(buttonWidth, buttonHeight);
         var maxDist = radius + extent;
-        var dx = pointerX - screenWidth * 0.5f;
-        var dy = pointerY - screenHeight * 0.5f;
+        var dx = pointerX - centerX;
+        var dy = pointerY - centerY;
         return dx * dx + dy * dy <= maxDist * maxDist;
     }
 
@@ -72,6 +74,8 @@ public static class SendRadialLogic
 
     public static bool AllowsPointerConfirm(
         Vector2 pointerScreen,
+        float centerScreenX,
+        float centerScreenY,
         float screenWidth,
         float screenHeight,
         float radiusFraction,
@@ -86,6 +90,8 @@ public static class SendRadialLogic
         return PointerInWheel(
             pointerScreen.x,
             pointerScreen.y,
+            centerScreenX,
+            centerScreenY,
             screenWidth,
             screenHeight,
             radiusFraction,

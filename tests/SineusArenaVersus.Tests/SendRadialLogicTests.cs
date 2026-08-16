@@ -43,8 +43,8 @@ public sealed class SendRadialLogicTests
     [Fact]
     public void PointerInWheel_accepts_center_and_rejects_corner()
     {
-        Assert.True(SendRadialLogic.PointerInWheel(400f, 300f, 800f, 600f, 0.28f, 108f, 48f));
-        Assert.False(SendRadialLogic.PointerInWheel(10f, 10f, 800f, 600f, 0.28f, 108f, 48f));
+        Assert.True(SendRadialLogic.PointerInWheel(400f, 300f, 400f, 300f, 800f, 600f, 0.11f, 78f, 34f));
+        Assert.False(SendRadialLogic.PointerInWheel(10f, 10f, 400f, 300f, 800f, 600f, 0.11f, 78f, 34f));
     }
 
     [Fact]
@@ -52,10 +52,10 @@ public sealed class SendRadialLogicTests
     {
         var blocks = new[] { new Rect(500f, 200f, 200f, 200f) };
         Assert.False(SendRadialLogic.AllowsPointerConfirm(
-            new Vector2(600f, 300f), 800f, 600f, 0.28f, 108f, 48f, blocks));
+            new Vector2(600f, 300f), 400f, 300f, 800f, 600f, 0.11f, 78f, 34f, blocks));
         Assert.False(SendRadialLogic.AllowsPointerConfirm(
-            new Vector2(10f, 10f), 800f, 600f, 0.28f, 108f, 48f, Array.Empty<Rect>()));
+            new Vector2(10f, 10f), 400f, 300f, 800f, 600f, 0.11f, 78f, 34f, Array.Empty<Rect>()));
         Assert.True(SendRadialLogic.AllowsPointerConfirm(
-            new Vector2(400f, 300f), 800f, 600f, 0.28f, 108f, 48f, Array.Empty<Rect>()));
+            new Vector2(400f, 300f), 400f, 300f, 800f, 600f, 0.11f, 78f, 34f, Array.Empty<Rect>()));
     }
 }

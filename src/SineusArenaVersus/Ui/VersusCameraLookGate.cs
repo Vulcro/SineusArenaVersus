@@ -6,6 +6,10 @@ using UnityEngine;
 
 namespace SineusArenaVersus.Ui;
 
+/// <summary>
+/// Freezes camera look while the send radial is open without hitching the open frame.
+/// Look-type discovery is deferred across frames (one type per tick).
+/// </summary>
 public static class VersusCameraLookGate
 {
     private static readonly string[] SuppressTypeNames =
@@ -25,7 +29,11 @@ public static class VersusCameraLookGate
         "CinemachineAutoOrbit"
     };
 
+    private static readonly Type?[] CachedTypes = new Type?[SuppressTypeNames.Length];
+    private static bool _typesResolved;
+
     private static bool _radialOpen;
+    private static int _suppressTypeIndex = -1;
     private static readonly BehaviourRestoreStack Suppressor = new();
 
     public static bool RadialOpen => _radialOpen;
@@ -39,9 +47,16 @@ public static class VersusCameraLookGate
         try
         {
             if (open)
-                SuppressLookBehaviours();
+            {
+                // Defer UnlockForUi + FindObjects to Tick — avoids open-frame hitch and
+                // keeps xUnit free of Unity Cursor ECalls during SetRadialOpen.
+                _suppressTypeIndex = 0;
+            }
             else
+            {
+                _suppressTypeIndex = -1;
                 Suppressor.RestoreAll();
+            }
         }
         catch (Exception)
         {
@@ -62,14 +77,53 @@ public static class VersusCameraLookGate
     {
         try
         {
-            // Discover look behaviours only on open — never rescan the scene each frame.
             VersusCursor.UnlockForUi();
+            ProgressDeferredSuppress();
             Suppressor.EnsureSuppressed();
         }
         catch (Exception)
         {
             // Unity player APIs are unavailable outside the game process.
         }
+    }
+
+    private static void ProgressDeferredSuppress()
+    {
+        if (_suppressTypeIndex < 0 || _suppressTypeIndex >= SuppressTypeNames.Length)
+            return;
+
+        EnsureTypesResolved();
+        var type = CachedTypes[_suppressTypeIndex];
+        _suppressTypeIndex++;
+        if (type is null || !typeof(Behaviour).IsAssignableFrom(type))
+            return;
+
+        foreach (var instance in UnityEngine.Object.FindObjectsByType(type))
+        {
+            if (instance is not Behaviour behaviour || IsExcluded(behaviour))
+                continue;
+            Suppressor.Suppress(behaviour);
+        }
+    }
+
+    private static void EnsureTypesResolved()
+    {
+        if (_typesResolved)
+            return;
+
+        for (var i = 0; i < SuppressTypeNames.Length; i++)
+        {
+            try
+            {
+                CachedTypes[i] = AccessTools.TypeByName(SuppressTypeNames[i]);
+            }
+            catch
+            {
+                CachedTypes[i] = null;
+            }
+        }
+
+        _typesResolved = true;
     }
 
     internal static bool ShouldSuppressTypeName(string typeName)
@@ -124,55 +178,8 @@ public static class VersusCameraLookGate
     internal static void ResetForTests()
     {
         _radialOpen = false;
+        _suppressTypeIndex = -1;
         Suppressor.Clear();
-    }
-
-    private static void SuppressLookBehaviours()
-    {
-        try
-        {
-            foreach (var behaviour in FindLookBehaviours())
-                Suppressor.Suppress(behaviour);
-        }
-        catch
-        {
-            // Unity scene APIs are unavailable in headless xUnit.
-        }
-    }
-
-    private static IEnumerable<Behaviour> FindLookBehaviours()
-    {
-        var found = new List<Behaviour>();
-
-        // Typed lookups only — never FindObjectsByType<MonoBehaviour>() (full-scene scan kills FPS).
-        foreach (var typeName in SuppressTypeNames)
-        {
-            var type = AccessTools.TypeByName(typeName);
-            if (type is null || !typeof(Behaviour).IsAssignableFrom(type))
-                continue;
-
-            foreach (var instance in UnityEngine.Object.FindObjectsByType(type))
-            {
-                if (instance is not Behaviour behaviour || IsExcluded(behaviour))
-                    continue;
-
-                if (!ContainsBehaviour(found, behaviour))
-                    found.Add(behaviour);
-            }
-        }
-
-        return found;
-    }
-
-    private static bool ContainsBehaviour(List<Behaviour> behaviours, Behaviour candidate)
-    {
-        foreach (var behaviour in behaviours)
-        {
-            if (ReferenceEquals(behaviour, candidate))
-                return true;
-        }
-
-        return false;
     }
 
     private static bool IsExcluded(Behaviour behaviour)
