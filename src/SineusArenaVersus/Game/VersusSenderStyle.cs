@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using UnityEngine;
 
 namespace SineusArenaVersus.Game;
 
@@ -10,12 +9,12 @@ namespace SineusArenaVersus.Game;
 /// </summary>
 public static class VersusSenderStyle
 {
-    private static readonly Color[] SlotColors =
+    private static readonly (float R, float G, float B, float A)[] SlotColors =
     {
-        new(0.25f, 0.85f, 1f, 1f),   // cyan
-        new(1f, 0.45f, 0.2f, 1f),    // orange
-        new(0.55f, 1f, 0.35f, 1f),   // lime
-        new(1f, 0.35f, 0.85f, 1f),   // magenta
+        (0.25f, 0.85f, 1f, 1f),   // cyan
+        (1f, 0.45f, 0.2f, 1f),    // orange
+        (0.55f, 1f, 0.35f, 1f),   // lime
+        (1f, 0.35f, 0.85f, 1f),   // magenta
     };
 
     public static int SlotIndex(IReadOnlyList<ulong> peerOrder, ulong peerId)
@@ -29,7 +28,7 @@ public static class VersusSenderStyle
         return Math.Abs(peerId.GetHashCode()) % SlotColors.Length;
     }
 
-    public static Color ColorForSlot(int slot) =>
+    public static (float R, float G, float B, float A) ColorForSlot(int slot) =>
         SlotColors[Math.Abs(slot) % SlotColors.Length];
 
     public static string ShortLabel(int slot, string? displayName)
@@ -43,6 +42,9 @@ public static class VersusSenderStyle
             return $"{prefix} {trimmed}";
         return $"{prefix} {trimmed.Substring(0, 11)}...";
     }
+
+    public static string ResolveDisplayName(ulong peerId) =>
+        $"Peer {peerId % 10000UL:D4}";
 
     public static IReadOnlyList<ulong> OrderedPeers(IEnumerable<ulong> peers) =>
         peers.Distinct().OrderBy(id => id).ToArray();

@@ -23,6 +23,7 @@ public sealed class VersusMatch : IDisposable
     private readonly VersusEconomy _economy;
     private readonly VersusCatalog _catalog;
     private readonly Func<string, int, InjectMarkerInfo?, bool> _injectPack;
+    private readonly Func<ulong, string> _peerDisplayName;
     private readonly Func<float> _passiveInterval;
     private readonly Func<float> _waveInterval;
     private readonly ISoloRunLauncher _soloRunLauncher;
@@ -46,12 +47,14 @@ public sealed class VersusMatch : IDisposable
         Func<float>? passiveInterval = null,
         Func<float>? waveInterval = null,
         bool redirectTargetsToLocal = false,
-        ISoloRunLauncher? soloRunLauncher = null)
+        ISoloRunLauncher? soloRunLauncher = null,
+        Func<ulong, string>? peerDisplayName = null)
     {
         _localPeerId = localPeerId;
         _economy = economy ?? throw new ArgumentNullException(nameof(economy));
         _catalog = catalog ?? throw new ArgumentNullException(nameof(catalog));
         _injectPack = injectPack ?? ((enemyKey, count, marker) => GameFacades.TryInjectPack(enemyKey, count, marker));
+        _peerDisplayName = peerDisplayName ?? VersusSenderStyle.ResolveDisplayName;
         _passiveInterval = passiveInterval ?? (() => VersusConfig.PassiveIntervalSeconds.Value);
         _waveInterval = waveInterval ?? (() => VersusConfig.WaveIntervalSeconds.Value);
         _redirectTargetsToLocal = redirectTargetsToLocal;
@@ -356,10 +359,14 @@ public sealed class VersusMatch : IDisposable
     {
         var order = VersusSenderStyle.OrderedPeers(_peers.Keys);
         var slot = VersusSenderStyle.SlotIndex(order, senderPeerId);
-        var displayName = Hud.RivalCardView.FormatPeerName(senderPeerId);
+        var displayName = _peerDisplayName(senderPeerId);
+        var (r, g, b, a) = VersusSenderStyle.ColorForSlot(slot);
         return new InjectMarkerInfo(
             VersusSenderStyle.ShortLabel(slot, displayName),
-            VersusSenderStyle.ColorForSlot(slot));
+            r,
+            g,
+            b,
+            a);
     }
 
     private void RefundPending(PendingSend pending)

@@ -10,7 +10,7 @@ namespace SineusArenaVersus.Game;
 /// </summary>
 public static class VersusSpawnHook
 {
-    public static Delegate? CreateCallback(string label, Color color)
+    public static Delegate? CreateCallback(string label, float r, float g, float b, float a)
     {
         if (!VersusConfig.ShowInjectSenderLabels.Value && !VersusConfig.ShowInjectSenderLights.Value)
             return null;
@@ -19,7 +19,7 @@ public static class VersusSpawnHook
         if (unitType is null)
             return null;
 
-        var binder = new MarkerBinder(label, color);
+        var binder = new MarkerBinder(label, new Color(r, g, b, a));
         var parameter = Expression.Parameter(unitType, "unit");
         var body = Expression.Call(
             Expression.Constant(binder),

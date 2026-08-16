@@ -21,7 +21,7 @@ public sealed class VersusPlugin : BaseUnityPlugin
 {
     public const string PluginGuid = "Fowks.SineusArenaVersus";
     public const string PluginName = "Sineus Arena Versus";
-    public const string PluginVersion = "0.1.12";
+    public const string PluginVersion = "0.1.13";
 
     internal static VersusPlugin Instance { get; private set; } = null!;
     internal static ManualLogSource Log => Instance.Logger;
@@ -234,6 +234,7 @@ public sealed class VersusPlugin : BaseUnityPlugin
             VersusCatalog.Load(),
             soloRunLauncher: new ReflectionSoloRunLauncher(
                 message => Log.LogError(message),
-                detachVersusLobby: () => ActiveLobby?.DetachLobbyForMatch()));
+                detachVersusLobby: () => ActiveLobby?.DetachLobbyForMatch()),
+            peerDisplayName: Hud.RivalCardView.FormatPeerName);
     }
 }

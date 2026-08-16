@@ -2,6 +2,7 @@ using System;
 using SineusArenaVersus.Catalog;
 using SineusArenaVersus.Economy;
 using SineusArenaVersus.Game;
+using SineusArenaVersus.Hud;
 using SineusArenaVersus.Match;
 using SineusArenaVersus.Steam;
 
@@ -58,7 +59,10 @@ public static class SoloDevTest
             economy,
             VersusCatalog.Load(),
             redirectTargetsToLocal: true,
-            soloRunLauncher: launcher);
+            soloRunLauncher: launcher,
+            peerDisplayName: peerId => peerId == rivalPeerId
+                ? "Rival"
+                : RivalCardView.FormatPeerName(peerId));
         match.QueueSendRequested += send => match.OnQueueSendValidated(send);
 
         if (!match.StartMatch(new[] { localPeerId, rivalPeerId }, isHost: true))

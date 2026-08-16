@@ -66,7 +66,9 @@ public static class GameFacades
             count,
             GetEnemyKeyResolver,
             (spawnId, packCount) => TrySchedulePack(spawnId, packCount, marker),
-            exception => Debug.LogError($"[SineusArenaVersus] Enemy inject failed: {exception}"));
+            exception => Debug.LogError($"[SineusArenaVersus] Enemy inject failed: {exception}"),
+            message => Debug.LogWarning($"[SineusArenaVersus] {message}"),
+            message => Debug.Log($"[SineusArenaVersus] {message}"));
     }
 
     internal static bool TryInjectPack(
@@ -74,7 +76,9 @@ public static class GameFacades
         int count,
         Func<EnemyKeyResolver> resolverFactory,
         Func<string, int, bool> scheduler,
-        Action<Exception>? onError = null)
+        Action<Exception>? onError = null,
+        Action<string>? onWarn = null,
+        Action<string>? onInfo = null)
     {
         if (count <= 0)
             return false;
@@ -83,15 +87,15 @@ public static class GameFacades
         {
             if (!resolverFactory().TryResolve(enemyKey, out var spawnId))
             {
-                Debug.LogWarning($"[SineusArenaVersus] Inject skipped: unknown enemyKey '{enemyKey}' (check catalog spawnId).");
+                onWarn?.Invoke($"Inject skipped: unknown enemyKey '{enemyKey}' (check catalog spawnId).");
                 return false;
             }
 
             var ok = scheduler(spawnId, count);
             if (!ok)
-                Debug.LogWarning($"[SineusArenaVersus] Inject failed for spawnId '{spawnId}' x{count} (no matching BaseLairSpawner prefab?).");
+                onWarn?.Invoke($"Inject failed for spawnId '{spawnId}' x{count} (no matching BaseLairSpawner prefab?).");
             else
-                Debug.Log($"[SineusArenaVersus] Inject scheduled: {enemyKey} -> {spawnId} x{count}");
+                onInfo?.Invoke($"Inject scheduled: {enemyKey} -> {spawnId} x{count}");
             return ok;
         }
         catch (Exception exception)
@@ -168,7 +172,12 @@ public static class GameFacades
             return false;
 
         var spawnCallback = marker is { } markerInfo
-            ? VersusSpawnHook.CreateCallback(markerInfo.Label, markerInfo.Color)
+            ? VersusSpawnHook.CreateCallback(
+                markerInfo.Label,
+                markerInfo.R,
+                markerInfo.G,
+                markerInfo.B,
+                markerInfo.A)
             : null;
 
         foreach (var candidate in UnityEngine.Object.FindObjectsByType(spawnerType))
