@@ -29,6 +29,16 @@ public static class VersusConfig
     public static ConfigEntry<float> InjectMarkerLightRange = null!;
     public static ConfigEntry<float> InjectMarkerLightIntensity = null!;
     public static ConfigEntry<bool> EnableSpectateViews = null!;
+    public static ConfigEntry<string> OpenSendRadialKey = null!;
+    public static ConfigEntry<string> ConfirmSendKey = null!;
+    public static ConfigEntry<string> CancelSendKey = null!;
+    public static ConfigEntry<string> CycleTargetPrevKey = null!;
+    public static ConfigEntry<string> CycleTargetNextKey = null!;
+    public static ConfigEntry<string> GamepadOpenAxis = null!;
+    public static ConfigEntry<float> GamepadOpenAxisThreshold = null!;
+    public static ConfigEntry<float> RadialStickDeadzone = null!;
+    public static ConfigEntry<string> GamepadRightStickXAxis = null!;
+    public static ConfigEntry<string> GamepadRightStickYAxis = null!;
 
     public static void Bind(ConfigFile cfg)
     {
@@ -40,7 +50,25 @@ public static class VersusConfig
         PassiveBase = cfg.Bind("Versus", "PassiveBase", 2, "Base VP per passive tick");
         PassivePerSuccessfulSend = cfg.Bind("Versus", "PassivePerSuccessfulSend", 1, "Extra VP/tick per successful send");
         MaxPlayers = cfg.Bind("Versus", "MaxPlayers", 4, new ConfigDescription("2-4", new AcceptableValueRange<int>(2, 4)));
-        OpenVersusMenuKey = cfg.Bind("Versus", "OpenVersusMenuKey", "F8", "Unity KeyCode used to open Versus or collapse its HUD");
+        OpenVersusMenuKey = cfg.Bind(
+            "Versus",
+            "OpenVersusMenuKey",
+            "F8",
+            "Unity KeyCode for lobby/dev Versus menu only (not in-match send shop)");
+        OpenSendRadialKey = cfg.Bind("Versus", "OpenSendRadialKey", "Mouse2", "Toggle radial");
+        ConfirmSendKey = cfg.Bind("Versus", "ConfirmSendKey", "Mouse0", "Confirm (Enter also hard-checked in input)");
+        CancelSendKey = cfg.Bind("Versus", "CancelSendKey", "Escape", "Cancel");
+        CycleTargetPrevKey = cfg.Bind("Versus", "CycleTargetPrevKey", "Q", "Prev target");
+        CycleTargetNextKey = cfg.Bind("Versus", "CycleTargetNextKey", "E", "Next target");
+        GamepadOpenAxis = cfg.Bind(
+            "Versus",
+            "GamepadOpenAxis",
+            "3",
+            "LT axis index (Joy1 Axis N on Windows Unity legacy Input; overrideable)");
+        GamepadOpenAxisThreshold = cfg.Bind("Versus", "GamepadOpenAxisThreshold", 0.55f, "Press when axis ≥ threshold");
+        RadialStickDeadzone = cfg.Bind("Versus", "RadialStickDeadzone", 0.35f, "Right stick");
+        GamepadRightStickXAxis = cfg.Bind("Versus", "GamepadRightStickXAxis", "4", "Common Unity Win mapping; overrideable");
+        GamepadRightStickYAxis = cfg.Bind("Versus", "GamepadRightStickYAxis", "5", "Overrideable");
         CatalogOverridePath = cfg.Bind("Versus", "CatalogOverridePath", "", "Optional absolute path to catalog.json override");
         DebugForceInject = cfg.Bind("Debug", "DebugForceInject", false, "Enable the manual enemy inject key");
         DebugOfflineVersus = cfg.Bind("Debug", "DebugOfflineVersus", false, "Auto-start offline Versus on plugin load (legacy)");
