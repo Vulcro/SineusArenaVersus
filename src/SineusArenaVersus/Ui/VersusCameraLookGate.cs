@@ -20,20 +20,23 @@ public static class VersusCameraLookGate
 
         _radialOpen = open;
 
-        // Open → free mouse / block camera (same as unlocking with RMB).
-        // Close → capture mouse / restore camera (same as locking with RMB).
-        // Never spam Cursor every frame — that blocked vanilla RMB liberation.
         if (open)
-            VersusGameCursor.TrySetCursorLock(false);
+        {
+            // Same as RMB unlock: free mouse + stop camera look.
+            if (!VersusGameCursor.TrySetCursorLock(false))
+                VersusGameCursor.UnlockForUiFallback();
+        }
         else
+        {
+            // Same as RMB capture: hide mouse + restore camera.
             VersusGameCursor.TrySetCursorLock(true);
+        }
     }
 
     public static void Tick()
     {
         // Intentionally empty: do not touch Cursor every frame.
         // RMB remains fully owned by UIManager.Update → SetCursorLock.
-        // SendRadialMenu closes itself if the player re-locks while open.
     }
 
     internal static bool ShouldSuppressTypeName(string typeName)

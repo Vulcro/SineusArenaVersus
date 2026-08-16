@@ -6,6 +6,9 @@ namespace SineusArenaVersus.Ui;
 /// </summary>
 internal static class VersusCursor
 {
-    public static void UnlockForUi() =>
-        VersusGameCursor.TrySetCursorLock(false);
+    public static void UnlockForUi()
+    {
+        if (!VersusGameCursor.TrySetCursorLock(false))
+            VersusGameCursor.UnlockForUiFallback();
+    }
 }

@@ -1,6 +1,7 @@
 using System;
 using System.Reflection;
 using HarmonyLib;
+using UnityEngine;
 
 namespace SineusArenaVersus.Ui;
 
@@ -64,6 +65,23 @@ public static class VersusGameCursor
         catch
         {
             return false;
+        }
+    }
+
+    /// <summary>
+    /// Last-resort unlock for IMGUI when the game has no UIManager (menus, boot).
+    /// Never locks — only frees the pointer.
+    /// </summary>
+    public static void UnlockForUiFallback()
+    {
+        try
+        {
+            Cursor.lockState = CursorLockMode.None;
+            Cursor.visible = true;
+        }
+        catch
+        {
+            // Headless.
         }
     }
 }
