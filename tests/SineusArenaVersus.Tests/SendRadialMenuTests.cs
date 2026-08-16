@@ -6,6 +6,7 @@ using SineusArenaVersus.Hud;
 using SineusArenaVersus.Match;
 using SineusArenaVersus.Net;
 using SineusArenaVersus.Ui;
+using UnityEngine;
 using Xunit;
 
 namespace SineusArenaVersus.Tests;
@@ -151,6 +152,20 @@ public sealed class SendRadialMenuTests : IDisposable
     }
 
     [Fact]
+    public void Cycle_target_ignored_when_closed()
+    {
+        using var match = CreateMatch();
+        var radial = CreateRadial();
+        var target = 0;
+        var living = new ulong[] { RivalPeer, OtherPeer };
+
+        radial.Tick(new VersusInputFrame { CycleTargetDelta = 1 }, match, ref target, living);
+
+        Assert.Equal(0, target);
+        Assert.False(radial.IsOpen);
+    }
+
+    [Fact]
     public void Stick_outside_deadzone_sets_highlight_from_stick_angle()
     {
         using var match = CreateMatch();
@@ -165,7 +180,7 @@ public sealed class SendRadialMenuTests : IDisposable
     }
 
     [Fact]
-    public void Mouse_sets_highlight_when_stick_inside_deadzone()
+    public void Mouse_sets_highlight_when_stick_never_latched()
     {
         using var match = CreateMatch();
         var radial = CreateRadial();
@@ -176,6 +191,133 @@ public sealed class SendRadialMenuTests : IDisposable
         radial.Tick(new VersusInputFrame { RightStickMagnitude = 0.1f }, match, ref target, living);
 
         Assert.Equal(2, radial.HighlightIndex);
+    }
+
+    [Fact]
+    public void Stick_release_keeps_highlight_until_mouse_moves()
+    {
+        using var match = CreateMatch();
+        var radial = CreateRadial();
+        var target = 0;
+        var living = new ulong[] { RivalPeer };
+        radial.Tick(ToggleFrame(), match, ref target, living);
+        AimStick(radial, match, ref target, living, x: 0f, y: 1f);
+
+        radial.Tick(
+            new VersusInputFrame
+            {
+                RightStickMagnitude = 0.1f,
+                PointerScreen = Vector2.zero
+            },
+            match,
+            ref target,
+            living);
+
+        Assert.Equal(1, radial.HighlightIndex);
+
+        radial.Tick(
+            new VersusInputFrame
+            {
+                RightStickMagnitude = 0.1f,
+                PointerScreen = new Vector2(400f, 0f)
+            },
+            match,
+            ref target,
+            living);
+
+        Assert.Equal(3, radial.HighlightIndex);
+    }
+
+    [Fact]
+    public void Pointer_confirm_on_wheel_queues_send()
+    {
+        using var match = CreateMatch();
+        QueueSendMsg? queued = null;
+        match.QueueSendRequested += msg => queued = msg;
+        var radial = CreateRadial();
+        var target = 0;
+        var living = new ulong[] { RivalPeer };
+        radial.Tick(ToggleFrame(), match, ref target, living);
+
+        radial.Tick(
+            new VersusInputFrame
+            {
+                PointerConfirmEdge = true,
+                PointerScreen = new Vector2(600f, 300f)
+            },
+            match,
+            ref target,
+            living);
+
+        Assert.True(queued.HasValue);
+        Assert.Equal("swarm", queued.Value.CatalogId);
+    }
+
+    [Fact]
+    public void Pointer_confirm_ignored_over_hud_block_or_outside_wheel()
+    {
+        using var match = CreateMatch();
+        QueueSendMsg? queued = null;
+        match.QueueSendRequested += msg => queued = msg;
+        var radial = CreateRadial();
+        var target = 0;
+        var living = new ulong[] { RivalPeer };
+        radial.Tick(ToggleFrame(), match, ref target, living);
+
+        radial.Tick(
+            new VersusInputFrame
+            {
+                PointerConfirmEdge = true,
+                PointerScreen = new Vector2(600f, 300f)
+            },
+            match,
+            ref target,
+            living,
+            new[] { new Rect(500f, 200f, 200f, 200f) });
+
+        Assert.False(queued.HasValue);
+
+        radial.Tick(
+            new VersusInputFrame
+            {
+                PointerConfirmEdge = true,
+                PointerScreen = new Vector2(10f, 10f)
+            },
+            match,
+            ref target,
+            living);
+
+        Assert.False(queued.HasValue);
+    }
+
+    [Fact]
+    public void Keyboard_confirm_still_works_over_hud_block()
+    {
+        using var match = CreateMatch();
+        QueueSendMsg? queued = null;
+        match.QueueSendRequested += msg => queued = msg;
+        var radial = CreateRadial();
+        var target = 0;
+        var living = new ulong[] { RivalPeer };
+        radial.Tick(ToggleFrame(), match, ref target, living);
+        AimFirstSector(radial, match, ref target, living);
+
+        radial.Tick(
+            new VersusInputFrame
+            {
+                ConfirmEdge = true,
+                RightStickX = 1f,
+                RightStickY = 0f,
+                RightStickMagnitude = 1f,
+                PointerScreen = new Vector2(600f, 300f)
+            },
+            match,
+            ref target,
+            living,
+            new[] { new Rect(500f, 200f, 200f, 200f) });
+
+        Assert.True(queued.HasValue);
+        Assert.Equal("swarm", queued.Value.CatalogId);
     }
 
     [Fact]

@@ -7,6 +7,7 @@ public readonly struct VersusInputFrame
 {
     public bool ToggleRadialEdge { get; init; }
     public bool ConfirmEdge { get; init; }
+    public bool PointerConfirmEdge { get; init; }
     public bool CancelEdge { get; init; }
     public int CycleTargetDelta { get; init; }
     public float RightStickX { get; init; }
@@ -23,10 +24,15 @@ public static class VersusInput
     public static VersusInputFrame Poll()
     {
         var toggle = WasKeyEdge(VersusConfig.OpenSendRadialKey.Value) || WasLtEdge();
-        var confirm = WasKeyEdge(VersusConfig.ConfirmSendKey.Value) ||
-                      Input.GetKeyDown(KeyCode.Return) ||
-                      Input.GetKeyDown(KeyCode.KeypadEnter) ||
-                      Input.GetKeyDown(KeyCode.JoystickButton0);
+        var confirmKeyName = VersusConfig.ConfirmSendKey.Value;
+        ClassifyConfirm(
+            confirmKeyName,
+            WasKeyEdge(confirmKeyName),
+            Input.GetKeyDown(KeyCode.Return),
+            Input.GetKeyDown(KeyCode.KeypadEnter),
+            Input.GetKeyDown(KeyCode.JoystickButton0),
+            out var confirm,
+            out var pointerConfirm);
         var cancel = WasKeyEdge(VersusConfig.CancelSendKey.Value) ||
                      Input.GetKeyDown(KeyCode.JoystickButton1);
         var cycle = 0;
@@ -43,6 +49,7 @@ public static class VersusInput
         {
             ToggleRadialEdge = toggle,
             ConfirmEdge = confirm,
+            PointerConfirmEdge = pointerConfirm,
             CancelEdge = cancel,
             CycleTargetDelta = cycle,
             RightStickX = sx,
@@ -51,6 +58,31 @@ public static class VersusInput
             PointerScreen = Input.mousePosition,
             VanillaUiBlocksVersus = DetectVanillaUiBlock()
         };
+    }
+
+    public static bool IsPointerKey(string keyName)
+    {
+        if (string.IsNullOrWhiteSpace(keyName) ||
+            !Enum.TryParse(keyName, true, out KeyCode key))
+            return false;
+        return key >= KeyCode.Mouse0 && key <= KeyCode.Mouse6;
+    }
+
+    public static void ClassifyConfirm(
+        string confirmKeyName,
+        bool confirmKeyDown,
+        bool enterDown,
+        bool keypadEnterDown,
+        bool gamepadSouthDown,
+        out bool confirmEdge,
+        out bool pointerConfirmEdge)
+    {
+        var pointerKey = IsPointerKey(confirmKeyName);
+        pointerConfirmEdge = pointerKey && confirmKeyDown;
+        confirmEdge = (!pointerKey && confirmKeyDown) ||
+                      enterDown ||
+                      keypadEnterDown ||
+                      gamepadSouthDown;
     }
 
     private static bool WasKeyEdge(string keyName)

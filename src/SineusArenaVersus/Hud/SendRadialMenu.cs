@@ -14,6 +14,7 @@ public sealed class SendRadialLayout
     public float ButtonHeight { get; set; } = 48f;
     public float CenterWidth { get; set; } = 220f;
     public float CenterHeight { get; set; } = 96f;
+    public float MouseRelatchPixels { get; set; } = 12f;
 }
 
 public sealed class SendRadialMenu
@@ -26,6 +27,8 @@ public sealed class SendRadialMenu
     private IReadOnlyList<ulong> _living = Array.Empty<ulong>();
     private int _targetIndex;
     private bool _denyFlash;
+    private bool _stickLatched;
+    private Vector2 _latchedPointer;
 
     public SendRadialMenu(
         Func<(float Width, float Height)>? screenSize = null,
@@ -46,7 +49,8 @@ public sealed class SendRadialMenu
         VersusInputFrame frame,
         VersusMatch? match,
         ref int targetIndex,
-        IReadOnlyList<ulong> livingTargets)
+        IReadOnlyList<ulong> livingTargets,
+        IReadOnlyList<Rect>? pointerBlockRects = null)
     {
         _match = match;
         _living = livingTargets ?? Array.Empty<ulong>();
@@ -67,9 +71,6 @@ public sealed class SendRadialMenu
             SetOpen(false);
             return;
         }
-
-        targetIndex = SendRadialLogic.CycleTarget(_living, targetIndex, frame.CycleTargetDelta);
-        _targetIndex = targetIndex;
 
         if (frame.VanillaUiBlocksVersus)
         {
@@ -99,9 +100,12 @@ public sealed class SendRadialMenu
             return;
         }
 
+        targetIndex = SendRadialLogic.CycleTarget(_living, targetIndex, frame.CycleTargetDelta);
+        _targetIndex = targetIndex;
+
         UpdateHighlight(frame, match);
 
-        if (!frame.ConfirmEdge)
+        if (!ShouldConfirm(frame, pointerBlockRects))
             return;
 
         TryConfirm(match, targetIndex);
@@ -176,24 +180,53 @@ public sealed class SendRadialMenu
             return;
         }
 
-        float angle;
         if (frame.RightStickMagnitude >= _stickDeadzone())
         {
-            angle = RadialMath.AngleFromVector(frame.RightStickX, frame.RightStickY);
+            _stickLatched = true;
+            _latchedPointer = frame.PointerScreen;
+            var stickAngle = RadialMath.AngleFromVector(frame.RightStickX, frame.RightStickY);
             HighlightIndex = SendRadialLogic.ResolveHighlight(
                 count,
-                angle,
+                stickAngle,
                 HighlightIndex,
                 frame.RightStickMagnitude,
                 _stickDeadzone());
             return;
         }
 
+        if (_stickLatched)
+        {
+            var moveX = frame.PointerScreen.x - _latchedPointer.x;
+            var moveY = frame.PointerScreen.y - _latchedPointer.y;
+            var relatch = _layout.MouseRelatchPixels;
+            if (moveX * moveX + moveY * moveY < relatch * relatch)
+                return;
+            _stickLatched = false;
+        }
+
         var (width, height) = _screenSize();
         var dx = frame.PointerScreen.x - width * 0.5f;
         var dy = frame.PointerScreen.y - height * 0.5f;
-        angle = RadialMath.AngleFromVector(dx, dy);
-        HighlightIndex = RadialMath.SectorIndex(angle, count);
+        var mouseAngle = RadialMath.AngleFromVector(dx, dy);
+        HighlightIndex = RadialMath.SectorIndex(mouseAngle, count);
+    }
+
+    private bool ShouldConfirm(VersusInputFrame frame, IReadOnlyList<Rect>? pointerBlockRects)
+    {
+        if (frame.ConfirmEdge)
+            return true;
+        if (!frame.PointerConfirmEdge)
+            return false;
+
+        var (width, height) = _screenSize();
+        return SendRadialLogic.AllowsPointerConfirm(
+            frame.PointerScreen,
+            width,
+            height,
+            _layout.RadiusFraction,
+            _layout.ButtonWidth,
+            _layout.ButtonHeight,
+            pointerBlockRects);
     }
 
     private void TryConfirm(VersusMatch match, int targetIndex)
@@ -222,7 +255,10 @@ public sealed class SendRadialMenu
         IsOpen = open;
         VersusCameraLookGate.SetRadialOpen(open);
         if (!open)
+        {
             _denyFlash = false;
+            _stickLatched = false;
+        }
     }
 
     private static (float Width, float Height) ReadScreenSize()

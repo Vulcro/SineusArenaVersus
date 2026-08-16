@@ -1,4 +1,5 @@
 using SineusArenaVersus.Ui;
+using System.Collections.Generic;
 using Xunit;
 
 namespace SineusArenaVersus.Tests;
@@ -58,5 +59,19 @@ public sealed class VersusCameraLookGateTests
         VersusCameraLookGate.SetRadialOpen(false);
         VersusCameraLookGate.Tick();
         Assert.False(VersusCameraLookGate.RadialOpen);
+    }
+
+    [Fact]
+    public void TryRestoreBehaviour_treats_unity_null_as_done()
+    {
+        Assert.True(VersusCameraLookGate.TryRestoreBehaviour(null!, true));
+    }
+
+    [Fact]
+    public void RemoveRestored_keeps_entries_that_fail()
+    {
+        var entries = new List<string> { "a", "fail", "c" };
+        VersusCameraLookGate.RemoveRestored(entries, value => value != "fail");
+        Assert.Equal(new[] { "fail" }, entries);
     }
 }

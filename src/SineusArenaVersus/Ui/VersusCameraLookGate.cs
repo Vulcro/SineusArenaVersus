@@ -93,6 +93,32 @@ public static class VersusCameraLookGate
                typeName.IndexOf("CameraLook", StringComparison.OrdinalIgnoreCase) >= 0;
     }
 
+    internal static bool TryRestoreBehaviour(Behaviour behaviour, bool wasEnabled)
+    {
+        try
+        {
+            if (behaviour == null)
+                return true;
+
+            behaviour.enabled = wasEnabled;
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    internal static void RemoveRestored<T>(IList<T> entries, Func<T, bool> restored)
+    {
+        for (var i = entries.Count - 1; i >= 0; i--)
+        {
+            if (!restored(entries[i]))
+                continue;
+            entries.RemoveAt(i);
+        }
+    }
+
     internal static void SetRadialOpenStateForTests(bool open) => _radialOpen = open;
 
     internal static void ResetForTests()
@@ -178,7 +204,7 @@ public static class VersusCameraLookGate
 
         public void Suppress(Behaviour behaviour)
         {
-            if (behaviour is null)
+            if (behaviour == null)
                 return;
 
             foreach (var entry in _entries)
@@ -195,29 +221,23 @@ public static class VersusCameraLookGate
         {
             foreach (var entry in _entries)
             {
-                if (entry.Behaviour is not null && entry.Behaviour.enabled)
-                    entry.Behaviour.enabled = false;
+                try
+                {
+                    if (entry.Behaviour == null)
+                        continue;
+                    if (entry.Behaviour.enabled)
+                        entry.Behaviour.enabled = false;
+                }
+                catch
+                {
+                    // Unity objects may be unavailable outside the game process.
+                }
             }
         }
 
         public void RestoreAll()
         {
-            try
-            {
-                foreach (var entry in _entries)
-                {
-                    if (entry.Behaviour is not null)
-                        entry.Behaviour.enabled = entry.WasEnabled;
-                }
-            }
-            catch
-            {
-                // Unity objects may be unavailable outside the game process.
-            }
-            finally
-            {
-                _entries.Clear();
-            }
+            RemoveRestored(_entries, entry => TryRestoreBehaviour(entry.Behaviour, entry.WasEnabled));
         }
 
         public void Clear() => _entries.Clear();

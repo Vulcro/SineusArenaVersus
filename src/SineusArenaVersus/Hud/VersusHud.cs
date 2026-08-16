@@ -47,7 +47,7 @@ public sealed class VersusHud : MonoBehaviour
 
         RefreshLivingTargets();
         var previous = _targetIndex;
-        _radial.Tick(frame, _match, ref _targetIndex, _livingTargets);
+        _radial.Tick(frame, _match, ref _targetIndex, _livingTargets, CollectPointerBlockRects());
         if (_spectate is not null &&
             _targetIndex != previous &&
             _spectate.ShowMiniView &&
@@ -241,6 +241,77 @@ public sealed class VersusHud : MonoBehaviour
         current.Use();
         if (_spectate is not null && _spectate.ShowMiniView)
             _spectate.SetFocusedPeer(peerId);
+    }
+
+    private IReadOnlyList<Rect> CollectPointerBlockRects()
+    {
+        if (_collapsed)
+            return Array.Empty<Rect>();
+
+        var rects = new List<Rect>(2);
+        if (TryComputeRivalStripRect(out var strip))
+            rects.Add(strip);
+
+        var side = _sidePanelRect;
+        if (side.x <= 0f)
+        {
+            try
+            {
+                side.x = Screen.width - PanelWidth - 12f;
+            }
+            catch (Exception)
+            {
+                return rects;
+            }
+        }
+
+        side.width = PanelWidth;
+        try
+        {
+            side.height = Mathf.Min(520f, Screen.height - 24f);
+        }
+        catch (Exception)
+        {
+            side.height = 420f;
+        }
+
+        rects.Add(side);
+        return rects;
+    }
+
+    private bool TryComputeRivalStripRect(out Rect rect)
+    {
+        rect = default;
+        if (_match is null)
+            return false;
+
+        var rivalCount = 0;
+        foreach (var peer in _match.Peers.Values)
+        {
+            if (peer.PeerId == _match.LocalPeerId)
+                continue;
+            rivalCount++;
+            if (rivalCount >= 3)
+                break;
+        }
+
+        if (rivalCount <= 0)
+            return false;
+
+        float screenWidth;
+        try
+        {
+            screenWidth = Screen.width;
+        }
+        catch (Exception)
+        {
+            return false;
+        }
+
+        var totalWidth = rivalCount * RivalCardWidth + (rivalCount - 1) * RivalCardGap;
+        var startX = (screenWidth - totalWidth) * 0.5f;
+        rect = new Rect(startX, 12f, totalWidth, RivalCardHeight);
+        return true;
     }
 
     private void RefreshLivingTargets()
