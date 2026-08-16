@@ -95,6 +95,23 @@ public static class VersusSerializer
             reader.ReadBoolean());
     }
 
+    public static byte[] Serialize(VpReportMsg msg)
+    {
+        using var stream = new MemoryStream();
+        using var writer = new BinaryWriter(stream, Encoding.UTF8, leaveOpen: true);
+        writer.Write((byte)VersusOpcode.VpReport);
+        writer.Write(msg.PeerId);
+        writer.Write(msg.Vp);
+        return stream.ToArray();
+    }
+
+    public static VpReportMsg DeserializeVpReport(byte[] packet)
+    {
+        ExpectOpcode(packet, VersusOpcode.VpReport);
+        using var reader = CreatePayloadReader(packet);
+        return new VpReportMsg(reader.ReadUInt64(), reader.ReadInt32());
+    }
+
     public static byte[] SerializePeer(VersusOpcode opcode, PeerMsg msg)
     {
         if (opcode is not (VersusOpcode.StrongholdDown or VersusOpcode.Winner or VersusOpcode.Ready or VersusOpcode.Refund))

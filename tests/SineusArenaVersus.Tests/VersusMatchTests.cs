@@ -1,5 +1,6 @@
 using SineusArenaVersus.Catalog;
 using SineusArenaVersus.Economy;
+using SineusArenaVersus.Game;
 using SineusArenaVersus.Match;
 using SineusArenaVersus.Net;
 using Xunit;
@@ -27,7 +28,7 @@ public sealed class VersusMatchTests
                 return true;
             },
             redirectTargetsToLocal: true);
-        match.QueueSendRequested += match.OnQueueSendValidated;
+        match.QueueSendRequested += send => match.OnQueueSendValidated(send);
         match.StartMatch(new[] { LocalPeer, RivalPeer }, isHost: true);
 
         Assert.True(match.TryQueueSend(RivalPeer, "swarm"));
@@ -47,7 +48,7 @@ public sealed class VersusMatchTests
     {
         var economy = FundedEconomy();
         using var match = CreateMatch(economy);
-        match.QueueSendRequested += match.OnQueueSendValidated;
+        match.QueueSendRequested += send => match.OnQueueSendValidated(send);
         match.StartMatch(new[] { LocalPeer, RivalPeer, OtherPeer }, isHost: true);
         Assert.True(match.TryQueueSend(RivalPeer, "swarm"));
 
@@ -63,7 +64,7 @@ public sealed class VersusMatchTests
     {
         var economy = FundedEconomy();
         using var match = CreateMatch(economy, (_, _) => throw new Xunit.Sdk.XunitException("Remote send must not inject locally."));
-        match.QueueSendRequested += match.OnQueueSendValidated;
+        match.QueueSendRequested += send => match.OnQueueSendValidated(send);
         match.StartMatch(new[] { LocalPeer, RivalPeer }, isHost: true);
         Assert.True(match.TryQueueSend(RivalPeer, "swarm"));
 
@@ -82,6 +83,7 @@ public sealed class VersusMatchTests
         (ulong sender, ulong target)? refund = null;
         match.RefundRequested += (sender, target) => refund = (sender, target);
         match.StartMatch(new[] { LocalPeer, RivalPeer, OtherPeer }, isHost: true);
+        match.OnVpReport(OtherPeer, 15);
         match.OnQueueSendValidated(new QueueSendMsg(OtherPeer, RivalPeer, "swarm", 8));
         match.OnStrongholdDown(RivalPeer);
 
@@ -169,6 +171,7 @@ public sealed class VersusMatchTests
         QueueSendMsg? relayed = null;
         match.SendAcceptedForRelay += send => relayed = send;
         match.StartMatch(new[] { LocalPeer, RivalPeer }, isHost: true);
+        match.OnVpReport(RivalPeer, 15);
 
         match.OnQueueSendValidated(new QueueSendMsg(RivalPeer, LocalPeer, "swarm", 7));
         Assert.Null(relayed);
@@ -177,6 +180,58 @@ public sealed class VersusMatchTests
         match.OnQueueSendValidated(accepted);
 
         Assert.Equal(accepted, relayed);
+    }
+
+    [Fact]
+    public void Match_start_aborts_when_solo_run_cannot_start()
+    {
+        using var match = CreateMatch(FundedEconomy(), soloRunLauncher: new FakeSoloRunLauncher(false));
+
+        var started = match.StartMatch(new[] { LocalPeer, RivalPeer }, isHost: true);
+
+        Assert.False(started);
+        Assert.Equal(VersusMatchState.Idle, match.State);
+        Assert.False(match.IsActive);
+    }
+
+    [Fact]
+    public void Match_start_uses_host_wave_interval()
+    {
+        using var match = CreateMatch(FundedEconomy(), waveInterval: () => 99f);
+
+        Assert.True(match.StartMatch(new[] { LocalPeer, RivalPeer }, isHost: false, waveInterval: 12f));
+
+        Assert.Equal(12f, match.WaveIntervalSeconds);
+        match.Tick(6f);
+        Assert.Equal(6f, match.WaveSecondsRemaining);
+    }
+
+    [Fact]
+    public void Promoted_host_finishes_match_after_original_host_disconnects()
+    {
+        using var match = CreateMatch(FundedEconomy());
+        match.StartMatch(new[] { LocalPeer, RivalPeer }, isHost: false);
+        match.OnStrongholdDown(RivalPeer);
+
+        match.SetHost(true);
+
+        Assert.Equal(LocalPeer, match.WinnerPeerId);
+        Assert.Equal(VersusMatchState.Ended, match.State);
+    }
+
+    [Fact]
+    public void Host_rejects_remote_send_without_reported_vp()
+    {
+        using var match = CreateMatch(FundedEconomy());
+        match.StartMatch(new[] { LocalPeer, RivalPeer }, isHost: true);
+
+        Assert.False(match.OnQueueSendValidated(new QueueSendMsg(RivalPeer, LocalPeer, "swarm", 8)));
+        Assert.Empty(match.IncomingQueue);
+
+        match.OnVpReport(RivalPeer, 15);
+
+        Assert.True(match.OnQueueSendValidated(new QueueSendMsg(RivalPeer, LocalPeer, "swarm", 8)));
+        Assert.Equal(5, match.PeerVp[RivalPeer]);
     }
 
     private static VersusEconomy FundedEconomy()
@@ -190,7 +245,8 @@ public sealed class VersusMatchTests
         VersusEconomy economy,
         System.Func<string, int, bool>? inject = null,
         System.Func<float>? waveInterval = null,
-        bool redirectTargetsToLocal = false) =>
+        bool redirectTargetsToLocal = false,
+        ISoloRunLauncher? soloRunLauncher = null) =>
         new(
             LocalPeer,
             economy,
@@ -198,5 +254,17 @@ public sealed class VersusMatchTests
             inject,
             passiveInterval: () => 10f,
             waveInterval: waveInterval ?? (() => 20f),
-            redirectTargetsToLocal: redirectTargetsToLocal);
+            redirectTargetsToLocal: redirectTargetsToLocal,
+            soloRunLauncher: soloRunLauncher ?? new FakeSoloRunLauncher(true));
+
+    private sealed class FakeSoloRunLauncher : ISoloRunLauncher
+    {
+        private readonly bool _result;
+
+        public FakeSoloRunLauncher(bool result) => _result = result;
+
+        public bool IsSoloRunActive() => false;
+
+        public bool TryStartSoloRun() => _result;
+    }
 }

@@ -104,6 +104,7 @@ Transport: Steam Matchmaking lobby + Steam Networking P2P.
 | `wave_tick` | reliable | wave_index, host_time |
 | `queue_send` | reliable | from, to, catalog_id, count |
 | `rival_snap` | unreliable/ordered | peer_id, stronghold_hp01, alive, optional pos |
+| `vp_report` | reliable, on change / ~1 Hz | peer_id, current_vp |
 | `stronghold_down` | reliable | peer_id |
 | `winner` | reliable | peer_id |
 
@@ -176,3 +177,4 @@ Transport: Steam Matchmaking lobby + Steam Networking P2P.
 | Economy | Kill VP + passive every 10s; income scales per successful send |
 | Plugin shape | Monolithic BepInEx package |
 | Spectate SubViewport | Polish phase |
+| Host disconnect | Eliminate host; lowest surviving SteamId becomes host, or sole survivor wins |

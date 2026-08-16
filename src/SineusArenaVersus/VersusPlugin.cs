@@ -122,9 +122,15 @@ public sealed class VersusPlugin : BaseUnityPlugin
             localPeerId,
             economy,
             VersusCatalog.Load(),
-            redirectTargetsToLocal: true);
-        match.QueueSendRequested += match.OnQueueSendValidated;
-        match.StartMatch(new[] { localPeerId, rivalPeerId }, isHost: true);
+            redirectTargetsToLocal: true,
+            soloRunLauncher: new ReflectionSoloRunLauncher(message => Logger.LogError(message)));
+        match.QueueSendRequested += send => match.OnQueueSendValidated(send);
+        if (!match.StartMatch(new[] { localPeerId, rivalPeerId }, isHost: true))
+        {
+            match.Dispose();
+            Logger.LogError("Offline Versus start aborted because the local solo run could not be launched.");
+            return;
+        }
         ActiveMatch = match;
         SyncHudBinding();
     }
@@ -187,6 +193,10 @@ public sealed class VersusPlugin : BaseUnityPlugin
             () => VersusConfig.VpTrash.Value,
             () => VersusConfig.VpElite.Value,
             () => VersusConfig.VpBoss.Value);
-        return new VersusMatch(localPeerId, economy, VersusCatalog.Load());
+        return new VersusMatch(
+            localPeerId,
+            economy,
+            VersusCatalog.Load(),
+            soloRunLauncher: new ReflectionSoloRunLauncher(message => Log.LogError(message)));
     }
 }

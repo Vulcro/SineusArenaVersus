@@ -69,6 +69,25 @@ Default `spawnId` values are data placeholders and must be replaced in
 `catalog.json` (or its configured override) with live prefab `UnitName` or
 GameObject names observed in-game.
 
+## Solo run start and detection
+
+Assembly metadata strings identified:
+
+- `UILobbySteamController::get_I()`
+- `void UILobbySteamController::StartGame()`
+- `GameFlowManager GameFlowManager::get_I()`
+- `bool GameFlowManager::get_GameplayStarted()`
+- `bool GameFlowManager::get_IsSinglePlayer()`
+- `void GameFlowManager::TryStartGameplay()`
+- `System.Threading.Tasks.Task LobbyManager::StartGame()`
+
+`ReflectionSoloRunLauncher` uses the parameterless
+`UILobbySteamController.I.StartGame()` UI path. Existing solo gameplay is
+detected only when `GameFlowManager.I.GameplayStarted` and `IsSinglePlayer` are
+both true. If the UI singleton or method is unavailable, Versus start aborts
+with an error instructing the player to start a vanilla Solo run and retry;
+the match never transitions to `InMatch`.
+
 ## Manual inject smoke
 
 1. Set `Debug.DebugForceInject = true`.

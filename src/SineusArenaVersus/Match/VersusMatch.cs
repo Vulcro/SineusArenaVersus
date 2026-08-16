@@ -25,15 +25,18 @@ public sealed class VersusMatch : IDisposable
     private readonly Func<string, int, bool> _injectPack;
     private readonly Func<float> _passiveInterval;
     private readonly Func<float> _waveInterval;
+    private readonly ISoloRunLauncher _soloRunLauncher;
     private readonly bool _redirectTargetsToLocal;
     private readonly Dictionary<ulong, PeerState> _peers = new();
     private readonly List<PendingSend> _pending = new();
     private readonly List<PendingSend> _localPurchases = new();
+    private readonly Dictionary<ulong, int> _peerVp = new();
     private float _passiveTimer;
     private float _waveTimer;
     private float _hostTime;
     private bool _isHost;
     private bool _eventsAttached;
+    private float? _hostWaveInterval;
 
     public VersusMatch(
         ulong localPeerId,
@@ -42,7 +45,8 @@ public sealed class VersusMatch : IDisposable
         Func<string, int, bool>? injectPack = null,
         Func<float>? passiveInterval = null,
         Func<float>? waveInterval = null,
-        bool redirectTargetsToLocal = false)
+        bool redirectTargetsToLocal = false,
+        ISoloRunLauncher? soloRunLauncher = null)
     {
         _localPeerId = localPeerId;
         _economy = economy ?? throw new ArgumentNullException(nameof(economy));
@@ -51,6 +55,7 @@ public sealed class VersusMatch : IDisposable
         _passiveInterval = passiveInterval ?? (() => VersusConfig.PassiveIntervalSeconds.Value);
         _waveInterval = waveInterval ?? (() => VersusConfig.WaveIntervalSeconds.Value);
         _redirectTargetsToLocal = redirectTargetsToLocal;
+        _soloRunLauncher = soloRunLauncher ?? new ReflectionSoloRunLauncher();
     }
 
     public event Action<QueueSendMsg>? QueueSendRequested;
@@ -68,10 +73,11 @@ public sealed class VersusMatch : IDisposable
     public VersusEconomy Economy => _economy;
     public VersusCatalog Catalog => _catalog;
     public int WaveIndex { get; private set; }
-    public float WaveIntervalSeconds => RequirePositiveInterval(_waveInterval(), "wave");
+    public float WaveIntervalSeconds => RequirePositiveInterval(_hostWaveInterval ?? _waveInterval(), "wave");
     public float WaveSecondsRemaining => Math.Max(0f, WaveIntervalSeconds - _waveTimer);
     public ulong? WinnerPeerId { get; private set; }
     public IReadOnlyDictionary<ulong, PeerState> Peers => _peers;
+    public IReadOnlyDictionary<ulong, int> PeerVp => _peerVp;
     public IReadOnlyList<QueueSendMsg> IncomingQueue => _pending.Select(pending => pending.Message).ToArray();
     public IReadOnlyDictionary<string, int> IncomingPreview => _pending
         .Where(IsTargetingLocal)
@@ -81,7 +87,7 @@ public sealed class VersusMatch : IDisposable
             group => group.Sum(pending => pending.Message.Count),
             StringComparer.OrdinalIgnoreCase);
 
-    public void StartMatch(IReadOnlyList<ulong> peers, bool isHost)
+    public bool StartMatch(IReadOnlyList<ulong> peers, bool isHost, float? waveInterval = null)
     {
         if (peers is null)
             throw new ArgumentNullException(nameof(peers));
@@ -89,6 +95,10 @@ public sealed class VersusMatch : IDisposable
             throw new InvalidOperationException($"Cannot start a match from state {State}.");
         if (!peers.Contains(_localPeerId))
             throw new ArgumentException("Peer list must contain the local peer.", nameof(peers));
+        if (waveInterval.HasValue)
+            RequirePositiveInterval(waveInterval.Value, "wave");
+        if (!_soloRunLauncher.TryStartSoloRun() && !_soloRunLauncher.IsSoloRunActive())
+            return false;
 
         State = VersusMatchState.LobbyBound;
         _peers.Clear();
@@ -97,15 +107,20 @@ public sealed class VersusMatch : IDisposable
 
         _pending.Clear();
         _localPurchases.Clear();
+        _peerVp.Clear();
+        foreach (var peerId in _peers.Keys)
+            _peerVp[peerId] = peerId == _localPeerId ? _economy.Vp : 0;
         _passiveTimer = 0f;
         _waveTimer = 0f;
         _hostTime = 0f;
         WaveIndex = 0;
         WinnerPeerId = null;
         _isHost = isHost;
+        _hostWaveInterval = waveInterval;
         AttachGameEvents();
         State = VersusMatchState.InMatch;
         GameFacades.IsActive = true;
+        return true;
     }
 
     public void Tick(float dt)
@@ -190,24 +205,48 @@ public sealed class VersusMatch : IDisposable
         }
     }
 
-    public void OnQueueSendValidated(QueueSendMsg send)
+    public bool OnQueueSendValidated(QueueSendMsg send)
     {
         if (!IsActive ||
             !_catalog.TryGet(send.CatalogId, out var offering) ||
             offering.Count != send.Count ||
             !_peers.ContainsKey(send.From) ||
             !_peers.TryGetValue(send.To, out var target))
-            return;
+            return false;
 
         if (_isHost && !target.IsAlive)
         {
             RefundRequested?.Invoke(send.From, send.To);
-            return;
+            return false;
+        }
+
+        if (_isHost && send.From != _localPeerId)
+        {
+            if (!_peerVp.TryGetValue(send.From, out var availableVp) || availableVp < offering.Cost)
+                return false;
+            _peerVp[send.From] = availableVp - offering.Cost;
         }
 
         _pending.Add(new PendingSend(send, offering.Cost));
         if (_isHost)
             SendAcceptedForRelay?.Invoke(send);
+        return true;
+    }
+
+    public void OnVpReport(ulong peerId, int vp)
+    {
+        if (!_isHost || !IsActive || peerId == _localPeerId || vp < 0 || !_peers.ContainsKey(peerId))
+            return;
+        _peerVp[peerId] = vp;
+    }
+
+    public void SetHost(bool isHost)
+    {
+        if (!IsActive)
+            return;
+        _isHost = isHost;
+        if (_isHost)
+            DetermineWinnerIfPossible();
     }
 
     public void OnRefund(ulong targetPeerId)
@@ -234,9 +273,7 @@ public sealed class VersusMatch : IDisposable
         if (!_isHost)
             return;
 
-        var survivors = _peers.Values.Where(candidate => candidate.IsAlive).ToArray();
-        if (survivors.Length == 1)
-            EndMatch(survivors[0].PeerId);
+        DetermineWinnerIfPossible();
     }
 
     public void OnWinner(ulong peerId)
@@ -290,7 +327,11 @@ public sealed class VersusMatch : IDisposable
         }
 
         if (_isHost)
+        {
+            if (_peerVp.TryGetValue(pending.Message.From, out var vp))
+                _peerVp[pending.Message.From] = vp + pending.Cost;
             RefundRequested?.Invoke(pending.Message.From, pending.Message.To);
+        }
     }
 
     private void RemoveLocalPurchase(PendingSend settled)
@@ -339,6 +380,13 @@ public sealed class VersusMatch : IDisposable
             return;
         StrongholdDownRequested?.Invoke(_localPeerId);
         OnStrongholdDown(_localPeerId);
+    }
+
+    private void DetermineWinnerIfPossible()
+    {
+        var survivors = _peers.Values.Where(candidate => candidate.IsAlive).ToArray();
+        if (survivors.Length == 1)
+            EndMatch(survivors[0].PeerId);
     }
 
     private sealed class PendingSend

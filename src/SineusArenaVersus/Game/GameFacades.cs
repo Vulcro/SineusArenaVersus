@@ -14,6 +14,7 @@ public static class GameFacades
         BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
 
     private static EnemyKeyResolver? _enemyKeyResolver;
+    private static ISoloRunLauncher? _soloRunLauncher;
 
     public static event Action<KillTier>? EnemyKilled;
     public static event Action? LocalKeepDestroyed;
@@ -36,6 +37,23 @@ public static class GameFacades
         var keep = TryGetLocalKeep();
         var damageable = keep is null ? null : ReadMember(keep, "Damageable");
         return damageable is not null && ReadBoolean(damageable, "IsAlive");
+    }
+
+    public static bool IsSoloRunActive()
+    {
+        var flowType = AccessTools.TypeByName("GameFlowManager");
+        var flow = flowType is null
+            ? null
+            : AccessTools.Property(flowType, "I")?.GetValue(null, null);
+        return flow is not null &&
+               ReadBoolean(flow, "GameplayStarted") &&
+               ReadBoolean(flow, "IsSinglePlayer");
+    }
+
+    public static bool TryStartSoloRun()
+    {
+        _soloRunLauncher ??= new ReflectionSoloRunLauncher();
+        return _soloRunLauncher.TryStartSoloRun();
     }
 
     public static bool TryInjectPack(string enemyKey, int count)

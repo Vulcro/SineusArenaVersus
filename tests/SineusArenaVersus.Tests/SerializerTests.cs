@@ -47,6 +47,16 @@ public class SerializerTests
         Assert.Equal(VersusOpcode.RivalSnap, VersusSerializer.GetOpcode(bytes));
     }
 
+    [Fact]
+    public void VpReportMsg_round_trips()
+    {
+        var original = new VpReportMsg(999UL, 42);
+        var bytes = VersusSerializer.Serialize(original);
+        var restored = VersusSerializer.DeserializeVpReport(bytes);
+        Assert.Equal(original, restored);
+        Assert.Equal(VersusOpcode.VpReport, VersusSerializer.GetOpcode(bytes));
+    }
+
     [Theory]
     [InlineData(VersusOpcode.StrongholdDown)]
     [InlineData(VersusOpcode.Winner)]
@@ -72,5 +82,6 @@ public class SerializerTests
         Assert.Equal(6, (byte)VersusOpcode.Winner);
         Assert.Equal(7, (byte)VersusOpcode.Ready);
         Assert.Equal(8, (byte)VersusOpcode.Refund);
+        Assert.Equal(9, (byte)VersusOpcode.VpReport);
     }
 }

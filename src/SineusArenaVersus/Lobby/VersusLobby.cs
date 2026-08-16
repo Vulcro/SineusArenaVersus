@@ -112,14 +112,19 @@ public sealed class VersusLobby : IDisposable
             throw new InvalidOperationException("Every lobby member must be ready.");
 
         var net = _net() ?? throw new InvalidOperationException("Versus networking is not attached.");
-        net.StartMatchAsHost(
-            lobby.Id,
-            members.Select(member => (ulong)member.Id).ToArray(),
-            _waveInterval());
+        if (!net.StartMatchAsHost(
+                lobby.Id,
+                members.Select(member => (ulong)member.Id).ToArray(),
+                _waveInterval()))
+            throw new InvalidOperationException(
+                "Versus start aborted because the local solo run could not be launched.");
     }
 
     public bool ContainsPeer(ulong peerId) =>
         _lobby?.Members.Any(member => member.Id == peerId) == true;
+
+    internal static bool IsVersusLobby(string? value) =>
+        string.Equals(value, "1", StringComparison.Ordinal);
 
     public void Dispose()
     {
@@ -138,6 +143,8 @@ public sealed class VersusLobby : IDisposable
         try
         {
             if (_disposed)
+                return;
+            if (!IsVersusLobby(lobby.GetData(VersusDataKey)))
                 return;
             var result = await lobby.Join();
             if (result != RoomEnter.Success)

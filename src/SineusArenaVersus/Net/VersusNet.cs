@@ -17,14 +17,17 @@ public interface IVersusTransport
 public sealed class VersusNet : IDisposable
 {
     public const float DefaultSnapshotIntervalSeconds = 1f / 3f;
+    public const float VpReportIntervalSeconds = 1f;
 
     private readonly VersusMatch _match;
     private readonly IVersusTransport _transport;
     private readonly Func<RivalSnapMsg>? _localSnapshot;
     private readonly float _snapshotIntervalSeconds;
-    private readonly ulong _hostPeerId;
+    private ulong _hostPeerId;
     private readonly HashSet<ulong> _disconnectedPeers = new();
     private float _snapshotTimer;
+    private float _vpReportTimer;
+    private int _lastReportedVp = -1;
     private bool _disposed;
 
     public VersusNet(
@@ -51,8 +54,9 @@ public sealed class VersusNet : IDisposable
     public event Action<Exception>? PacketRejected;
 
     public bool IsHost => _transport.LocalPeerId == _hostPeerId;
+    public ulong HostPeerId => _hostPeerId;
 
-    public void StartMatchAsHost(ulong lobbyId, IReadOnlyList<ulong> peers, float waveInterval)
+    public bool StartMatchAsHost(ulong lobbyId, IReadOnlyList<ulong> peers, float waveInterval)
     {
         ThrowIfDisposed();
         if (!IsHost)
@@ -64,9 +68,12 @@ public sealed class VersusNet : IDisposable
         for (var i = 0; i < peers.Count; i++)
             peerArray[i] = peers[i];
 
+        if (!_match.StartMatch(peerArray, isHost: true, waveInterval))
+            return false;
+
         var packet = VersusSerializer.Serialize(new MatchStartMsg(lobbyId, waveInterval, peerArray));
         Broadcast(VersusOpcode.MatchStart, packet, peerArray);
-        _match.StartMatch(peerArray, isHost: true);
+        return true;
     }
 
     public void Pump(float deltaTime)
@@ -89,6 +96,7 @@ public sealed class VersusNet : IDisposable
         }
 
         TickSnapshot(deltaTime);
+        TickVpReport(deltaTime);
     }
 
     public void Broadcast(VersusOpcode opcode, byte[] payload)
@@ -110,13 +118,34 @@ public sealed class VersusNet : IDisposable
     public void HandlePeerDisconnected(ulong peerId)
     {
         ThrowIfDisposed();
-        if (!IsHost ||
-            !_match.IsActive ||
+        if (!_match.IsActive ||
             !_match.Peers.TryGetValue(peerId, out var peer) ||
             !peer.IsAlive)
             return;
 
         _disconnectedPeers.Add(peerId);
+        if (peerId == _hostPeerId)
+        {
+            _match.OnStrongholdDown(peerId);
+            var nextHost = FindLowestSurvivingPeer();
+            if (!nextHost.HasValue)
+                return;
+
+            _hostPeerId = nextHost.Value;
+            if (IsHost)
+            {
+                var hostDownPayload = VersusSerializer.SerializePeer(
+                    VersusOpcode.StrongholdDown,
+                    new PeerMsg(peerId));
+                Broadcast(VersusOpcode.StrongholdDown, hostDownPayload);
+            }
+            _match.SetHost(IsHost);
+            return;
+        }
+
+        if (!IsHost)
+            return;
+
         var payload = VersusSerializer.SerializePeer(
             VersusOpcode.StrongholdDown,
             new PeerMsg(peerId));
@@ -158,7 +187,8 @@ public sealed class VersusNet : IDisposable
             case VersusOpcode.MatchStart:
                 RequireHost(packet.SenderId, opcode);
                 var start = VersusSerializer.DeserializeMatchStart(packet.Payload);
-                _match.StartMatch(start.Peers, isHost: false);
+                if (!_match.StartMatch(start.Peers, isHost: false, start.WaveInterval))
+                    throw new InvalidOperationException("Versus match start aborted because the local solo run could not start.");
                 break;
             case VersusOpcode.WaveTick:
                 RequireHost(packet.SenderId, opcode);
@@ -185,6 +215,9 @@ public sealed class VersusNet : IDisposable
             case VersusOpcode.Refund:
                 RequireHost(packet.SenderId, opcode);
                 _match.OnRefund(VersusSerializer.DeserializePeer(packet.Payload).PeerId);
+                break;
+            case VersusOpcode.VpReport:
+                RouteVpReport(packet);
                 break;
             case VersusOpcode.Ready:
                 throw new InvalidDataException("Ready state is carried by Steam lobby member data.");
@@ -226,6 +259,19 @@ public sealed class VersusNet : IDisposable
         _match.OnStrongholdDown(message.PeerId);
     }
 
+    private void RouteVpReport(ReceivedPacket packet)
+    {
+        if (!IsHost)
+            throw new InvalidDataException("Only the host accepts VP reports.");
+
+        var report = VersusSerializer.DeserializeVpReport(packet.Payload);
+        if (report.PeerId != packet.SenderId)
+            throw new InvalidDataException("VP report sender does not match its peer id.");
+        if (report.Vp < 0)
+            throw new InvalidDataException("VP report cannot be negative.");
+        _match.OnVpReport(report.PeerId, report.Vp);
+    }
+
     private void TickSnapshot(float deltaTime)
     {
         if (_localSnapshot is null ||
@@ -243,6 +289,22 @@ public sealed class VersusNet : IDisposable
         if (snapshot.PeerId != _transport.LocalPeerId)
             throw new InvalidOperationException("Local snapshot peer id does not match the transport.");
         Broadcast(VersusOpcode.RivalSnap, VersusSerializer.Serialize(snapshot));
+    }
+
+    private void TickVpReport(float deltaTime)
+    {
+        if (IsHost || _match.State != VersusMatchState.InMatch)
+            return;
+
+        _vpReportTimer += deltaTime;
+        var currentVp = _match.Economy.Vp;
+        if (currentVp == _lastReportedVp && _vpReportTimer < VpReportIntervalSeconds)
+            return;
+
+        _vpReportTimer %= VpReportIntervalSeconds;
+        _lastReportedVp = currentVp;
+        SendTo(_hostPeerId, VersusOpcode.VpReport, VersusSerializer.Serialize(
+            new VpReportMsg(_transport.LocalPeerId, currentVp)));
     }
 
     private void HandleQueueSendRequested(QueueSendMsg message)
@@ -318,6 +380,19 @@ public sealed class VersusNet : IDisposable
     }
 
     private static bool IsReliable(VersusOpcode opcode) => opcode != VersusOpcode.RivalSnap;
+
+    private ulong? FindLowestSurvivingPeer()
+    {
+        ulong? lowest = null;
+        foreach (var peer in _match.Peers.Values)
+        {
+            if (!peer.IsAlive || _disconnectedPeers.Contains(peer.PeerId))
+                continue;
+            if (!lowest.HasValue || peer.PeerId < lowest.Value)
+                lowest = peer.PeerId;
+        }
+        return lowest;
+    }
 
     private void ThrowIfDisposed()
     {
