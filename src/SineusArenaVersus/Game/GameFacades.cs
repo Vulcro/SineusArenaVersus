@@ -1,5 +1,6 @@
 using System;
 using System.Collections;
+using System.Collections.Generic;
 using System.Reflection;
 using HarmonyLib;
 using SineusArenaVersus.Catalog;
@@ -206,12 +207,15 @@ public static class GameFacades
                 markerInfo.A)
             : null;
 
+        var aliases = SplitSpawnAliases(spawnId);
+        List<string>? available = null;
+
         foreach (var candidate in UnityEngine.Object.FindObjectsByType(spawnerType))
         {
             if (!ReadBoolean(candidate, "IsServer"))
                 continue;
 
-            var prefab = FindPrefab(candidate, spawnId);
+            var prefab = FindPrefab(candidate, aliases, ref available);
             if (prefab is null)
                 continue;
 
@@ -226,13 +230,26 @@ public static class GameFacades
             return true;
         }
 
+        if (available is { Count: > 0 })
+            Debug.LogWarning(
+                $"[SineusArenaVersus] No prefab matched spawnId '{spawnId}'. Spawner units: {string.Join(", ", available)}");
         return false;
     }
 
-    private static object? FindPrefab(object spawner, string spawnId)
+    private static string[] SplitSpawnAliases(string spawnId)
+    {
+        if (string.IsNullOrWhiteSpace(spawnId))
+            return Array.Empty<string>();
+
+        return spawnId.Split(new[] { '|', ',', ';' }, StringSplitOptions.RemoveEmptyEntries);
+    }
+
+    private static object? FindPrefab(object spawner, IReadOnlyList<string> aliases, ref List<string>? available)
     {
         if (ReadMember(spawner, "units") is not IEnumerable entries)
             return null;
+
+        available ??= new List<string>();
 
         foreach (var entry in entries)
         {
@@ -240,37 +257,106 @@ public static class GameFacades
                 continue;
 
             var prefab = ReadMember(entry, "prefab");
-            if (prefab is not null && MatchesSpawnId(prefab, spawnId))
+            if (prefab is null)
+                continue;
+
+            CollectIdentifiers(prefab, available);
+            if (MatchesAnyAlias(prefab, aliases))
                 return prefab;
         }
 
         return null;
     }
 
-    private static bool MatchesSpawnId(object prefab, string spawnId)
+    private static void CollectIdentifiers(object prefab, List<string> sink)
     {
-        if (EqualsIdentifier(ReadMember(prefab, "UnitName") as string, spawnId))
-            return true;
+        void Add(string? value)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+                return;
+            var normalized = NormalizeIdentifier(value!);
+            if (normalized.Length == 0)
+                return;
+            foreach (var existing in sink)
+            {
+                if (string.Equals(existing, normalized, StringComparison.OrdinalIgnoreCase))
+                    return;
+            }
 
+            sink.Add(normalized);
+        }
+
+        Add(ReadMember(prefab, "UnitName") as string);
         if (prefab is Component component)
-            return EqualsIdentifier(component.name, spawnId) ||
-                   EqualsIdentifier(component.gameObject.name, spawnId);
+        {
+            Add(component.name);
+            Add(component.gameObject.name);
+        }
+    }
+
+    private static bool MatchesAnyAlias(object prefab, IReadOnlyList<string> aliases)
+    {
+        foreach (var alias in aliases)
+        {
+            var needle = NormalizeIdentifier(alias.Trim());
+            if (needle.Length == 0)
+                continue;
+            if (MatchesSpawnId(prefab, needle))
+                return true;
+        }
 
         return false;
     }
 
-    private static bool EqualsIdentifier(string? candidate, string expected)
+    private static bool MatchesSpawnId(object prefab, string spawnId)
+    {
+        if (IdentifierEquals(ReadMember(prefab, "UnitName") as string, spawnId))
+            return true;
+
+        if (prefab is Component component)
+            return IdentifierEquals(component.name, spawnId) ||
+                   IdentifierEquals(component.gameObject.name, spawnId);
+
+        return false;
+    }
+
+    private static bool IdentifierEquals(string? candidate, string expected)
     {
         if (string.IsNullOrWhiteSpace(candidate))
             return false;
 
-        const string cloneSuffix = "(Clone)";
-        var identifier = candidate!;
-        var normalized = identifier.EndsWith(cloneSuffix, StringComparison.Ordinal)
-            ? identifier.Substring(0, identifier.Length - cloneSuffix.Length).TrimEnd()
-            : identifier;
+        var left = NormalizeIdentifier(candidate!);
+        var right = NormalizeIdentifier(expected);
+        if (left.Length == 0 || right.Length == 0)
+            return false;
 
-        return string.Equals(normalized, expected, StringComparison.OrdinalIgnoreCase);
+        if (string.Equals(left, right, StringComparison.OrdinalIgnoreCase))
+            return true;
+
+        // Accept Mob_Skeleton ↔ Skeleton and partial prefab names.
+        if (left.EndsWith(right, StringComparison.OrdinalIgnoreCase) ||
+            right.EndsWith(left, StringComparison.OrdinalIgnoreCase))
+            return true;
+
+        return left.IndexOf(right, StringComparison.OrdinalIgnoreCase) >= 0 ||
+               right.IndexOf(left, StringComparison.OrdinalIgnoreCase) >= 0;
+    }
+
+    private static string NormalizeIdentifier(string value)
+    {
+        const string cloneSuffix = "(Clone)";
+        var identifier = value.Trim();
+        if (identifier.EndsWith(cloneSuffix, StringComparison.Ordinal))
+            identifier = identifier.Substring(0, identifier.Length - cloneSuffix.Length).TrimEnd();
+
+        if (identifier.StartsWith("Mob_", StringComparison.OrdinalIgnoreCase) ||
+            identifier.StartsWith("Boss_", StringComparison.OrdinalIgnoreCase) ||
+            identifier.StartsWith("Enemy_", StringComparison.OrdinalIgnoreCase))
+        {
+            // Keep full form for exact matches; comparison also uses EndsWith.
+        }
+
+        return identifier;
     }
 
     private static bool IsEnemy(object unit)

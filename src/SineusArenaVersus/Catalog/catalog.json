@@ -1,8 +1,36 @@
 {
   "offerings": [
-    { "id": "swarm", "displayName": "Swarm", "cost": 10, "enemyKey": "trash", "spawnId": "trash", "count": 8 },
-    { "id": "fast_pack", "displayName": "Fast Pack", "cost": 18, "enemyKey": "fast", "spawnId": "fast", "count": 5 },
-    { "id": "elites", "displayName": "Elites", "cost": 35, "enemyKey": "elite", "spawnId": "elite", "count": 2 },
-    { "id": "mini_boss", "displayName": "Mini-Boss", "cost": 60, "enemyKey": "mini_boss", "spawnId": "mini_boss", "count": 1 }
+    {
+      "id": "swarm",
+      "displayName": "Skeletons",
+      "cost": 10,
+      "enemyKey": "trash",
+      "spawnId": "Mob_Skeleton|Mob_Frog|Mob_Swine|Mob_Barrel",
+      "count": 8
+    },
+    {
+      "id": "fast_pack",
+      "displayName": "Dark Souls",
+      "cost": 18,
+      "enemyKey": "fast",
+      "spawnId": "Mob_Dark_Soul_fly|Mob_Dark_Soul|Mob_Horse",
+      "count": 5
+    },
+    {
+      "id": "elites",
+      "displayName": "Dementors",
+      "cost": 35,
+      "enemyKey": "elite",
+      "spawnId": "Mob_Dementor|Mob_Bull|Mob_Candle_Knight|Mob_Hag",
+      "count": 2
+    },
+    {
+      "id": "mini_boss",
+      "displayName": "Tsar Barrel",
+      "cost": 60,
+      "enemyKey": "mini_boss",
+      "spawnId": "Mob_Tsar_Barrel|Mob_Goose_Tyrant|Mob_Souls_Keeper_aka_Gribotron|Mob_NIGHTMARE|Boss_organ",
+      "count": 1
+    }
   ]
 }
