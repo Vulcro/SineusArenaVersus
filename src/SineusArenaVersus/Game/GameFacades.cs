@@ -17,6 +17,7 @@ public static class GameFacades
 
     public static event Action<KillTier>? EnemyKilled;
     public static event Action? LocalKeepDestroyed;
+    public static bool IsActive { get; internal set; }
 
     public static float TryGetLocalKeepHp01()
     {
