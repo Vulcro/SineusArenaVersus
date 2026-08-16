@@ -1,6 +1,8 @@
 using BepInEx;
 using BepInEx.Logging;
 using HarmonyLib;
+using SineusArenaVersus.Game;
+using UnityEngine;
 
 namespace SineusArenaVersus;
 
@@ -28,5 +30,18 @@ public sealed class VersusPlugin : BaseUnityPlugin
     private void OnDestroy()
     {
         _harmony?.UnpatchSelf();
+    }
+
+    private void Update()
+    {
+        if (!VersusConfig.DebugForceInject.Value ||
+            !System.Enum.TryParse(VersusConfig.DebugInjectKey.Value, true, out KeyCode key) ||
+            !Input.GetKeyDown(key))
+            return;
+
+        var injected = GameFacades.TryInjectPack(
+            VersusConfig.DebugEnemyKey.Value,
+            VersusConfig.DebugEnemyCount.Value);
+        Logger.LogInfo($"Debug enemy inject {(injected ? "scheduled" : "failed")}");
     }
 }

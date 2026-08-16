@@ -13,6 +13,11 @@ public static class VersusConfig
     public static ConfigEntry<int> PassivePerSuccessfulSend = null!;
     public static ConfigEntry<int> MaxPlayers = null!;
     public static ConfigEntry<string> CatalogOverridePath = null!;
+    public static ConfigEntry<bool> DebugForceInject = null!;
+    public static ConfigEntry<string> DebugInjectKey = null!;
+    public static ConfigEntry<string> DebugEnemyKey = null!;
+    public static ConfigEntry<int> DebugEnemyCount = null!;
+    public static ConfigEntry<float> InjectRadius = null!;
 
     public static void Bind(ConfigFile cfg)
     {
@@ -25,5 +30,12 @@ public static class VersusConfig
         PassivePerSuccessfulSend = cfg.Bind("Versus", "PassivePerSuccessfulSend", 1, "Extra VP/tick per successful send");
         MaxPlayers = cfg.Bind("Versus", "MaxPlayers", 4, new ConfigDescription("2-4", new AcceptableValueRange<int>(2, 4)));
         CatalogOverridePath = cfg.Bind("Versus", "CatalogOverridePath", "", "Optional absolute path to catalog.json override");
+        DebugForceInject = cfg.Bind("Debug", "DebugForceInject", false, "Enable the manual enemy inject key");
+        DebugInjectKey = cfg.Bind("Debug", "DebugInjectKey", "F8", "Unity KeyCode used for manual enemy inject");
+        DebugEnemyKey = cfg.Bind("Debug", "DebugEnemyKey", "trash", "Catalog enemyKey used for manual inject");
+        DebugEnemyCount = cfg.Bind("Debug", "DebugEnemyCount", 3,
+            new ConfigDescription("Manual inject pack size", new AcceptableValueRange<int>(1, 100)));
+        InjectRadius = cfg.Bind("Versus", "InjectRadius", 15f,
+            new ConfigDescription("Enemy inject radius around the local player", new AcceptableValueRange<float>(1f, 100f)));
     }
 }
