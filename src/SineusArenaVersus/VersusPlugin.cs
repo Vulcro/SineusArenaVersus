@@ -8,6 +8,7 @@ using SineusArenaVersus.Hud;
 using SineusArenaVersus.Lobby;
 using SineusArenaVersus.Match;
 using SineusArenaVersus.Net;
+using SineusArenaVersus.Spectate;
 using SineusArenaVersus.Steam;
 using SineusArenaVersus.Ui;
 using UnityEngine;
@@ -31,12 +32,14 @@ public sealed class VersusPlugin : BaseUnityPlugin
     private SteamP2PTransport? _transport;
     private VersusNet? _net;
     private VersusHud? _hud;
+    private VersusSpectate? _spectate;
     private VersusMenu? _menu;
 
     private void Awake()
     {
         Instance = this;
         VersusConfig.Bind(Config);
+        _spectate = new VersusSpectate();
         _hud = gameObject.AddComponent<VersusHud>();
         _hud.LeaveMatchRequested += LeaveActiveMatch;
         _menu = gameObject.AddComponent<VersusMenu>();
@@ -137,7 +140,7 @@ public sealed class VersusPlugin : BaseUnityPlugin
         Instance.SyncHudBinding();
     }
 
-    private void SyncHudBinding() => _hud?.Bind(ActiveMatch);
+    private void SyncHudBinding() => _hud?.Bind(ActiveMatch, _spectate);
 
     private void HandleLobbyMemberLeft(ulong peerId)
     {

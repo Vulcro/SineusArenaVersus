@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using SineusArenaVersus.Match;
+using SineusArenaVersus.Spectate;
 using UnityEngine;
 
 namespace SineusArenaVersus.Hud;
@@ -14,17 +15,20 @@ public sealed class VersusHud : MonoBehaviour
     private const float RivalCardGap = 8f;
 
     private VersusMatch? _match;
+    private VersusSpectate? _spectate;
     private int _targetIndex;
     private ulong[] _livingTargets = Array.Empty<ulong>();
     private bool _collapsed;
 
     public event Action? LeaveMatchRequested;
 
-    public void Bind(VersusMatch? match)
+    public void Bind(VersusMatch? match, VersusSpectate? spectate = null)
     {
         _match = match;
+        _spectate = spectate;
         _targetIndex = 0;
         _collapsed = false;
+        _spectate?.Bind(match);
     }
 
     public void ToggleCollapsed() => _collapsed = !_collapsed;
@@ -71,6 +75,7 @@ public sealed class VersusHud : MonoBehaviour
         var panelRect = new Rect(Screen.width - PanelWidth - 12f, 12f, PanelWidth, Screen.height - 24f);
         GUILayout.BeginArea(panelRect, GUI.skin.box);
         DrawShopPanel();
+        DrawSpectatePanel();
         DrawPreviewPanel();
         GUILayout.EndArea();
     }
@@ -91,7 +96,13 @@ public sealed class VersusHud : MonoBehaviour
 
         var labels = _livingTargets.Select(RivalCardView.FormatPeerName).ToArray();
         _targetIndex = Mathf.Clamp(_targetIndex, 0, _livingTargets.Length - 1);
+        var previousTargetIndex = _targetIndex;
         _targetIndex = GUILayout.SelectionGrid(_targetIndex, labels, 1);
+        if (_spectate is not null &&
+            _targetIndex != previousTargetIndex &&
+            _spectate.ShowMiniView &&
+            _livingTargets.Length > 0)
+            _spectate.SetFocusedPeer(_livingTargets[_targetIndex]);
 
         GUILayout.Space(8f);
         var shopEnabled = _match.ShopEnabled;
@@ -103,6 +114,29 @@ public sealed class VersusHud : MonoBehaviour
                 _match.TryQueueSend(_livingTargets[_targetIndex], offering.Id);
             GUI.enabled = true;
         }
+    }
+
+    private void DrawSpectatePanel()
+    {
+        if (_spectate is null)
+            return;
+
+        GUILayout.Space(8f);
+        GUILayout.Label("Spectate (0.2.0 polish)");
+        GUI.enabled = VersusConfig.EnableSpectateViews.Value && _match!.IsActive;
+        var nextShow = GUILayout.Toggle(_spectate.ShowMiniView, "Mini rival view");
+        if (GUI.enabled)
+        {
+            if (nextShow && !_spectate.ShowMiniView && _livingTargets.Length > 0)
+                _spectate.SetFocusedPeer(_livingTargets[_targetIndex]);
+            else if (!nextShow)
+                _spectate.ClearFocusedPeer();
+            _spectate.ShowMiniView = nextShow;
+        }
+
+        GUI.enabled = true;
+        if (!VersusConfig.EnableSpectateViews.Value)
+            GUILayout.Label("Set EnableSpectateViews=true for 0.2.0 preview.");
     }
 
     private void DrawPreviewPanel()

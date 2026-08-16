@@ -22,6 +22,7 @@ public static class VersusConfig
     public static ConfigEntry<string> DebugEnemyKey = null!;
     public static ConfigEntry<int> DebugEnemyCount = null!;
     public static ConfigEntry<float> InjectRadius = null!;
+    public static ConfigEntry<bool> EnableSpectateViews = null!;
 
     public static void Bind(ConfigFile cfg)
     {
@@ -45,5 +46,10 @@ public static class VersusConfig
             new ConfigDescription("Manual inject pack size", new AcceptableValueRange<int>(1, 100)));
         InjectRadius = cfg.Bind("Versus", "InjectRadius", 15f,
             new ConfigDescription("Enemy inject radius around the local player", new AcceptableValueRange<float>(1f, 100f)));
+        EnableSpectateViews = cfg.Bind(
+            "Polish",
+            "EnableSpectateViews",
+            false,
+            "SubViewport rival mini-view (0.2.0 polish; V1 stub only, default off)");
     }
 }
