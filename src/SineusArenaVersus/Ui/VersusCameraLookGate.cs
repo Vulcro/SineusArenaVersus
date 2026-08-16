@@ -23,13 +23,16 @@ public static class VersusCameraLookGate
         if (open)
         {
             // Same as RMB unlock: free mouse + stop camera look.
-            if (!VersusGameCursor.TrySetCursorLock(false))
+            // Skip entirely when UIManager is absent (xUnit) — no Cursor ECall.
+            if (VersusGameCursor.HasUiManager() &&
+                !VersusGameCursor.TrySetCursorLock(false))
                 VersusGameCursor.UnlockForUiFallback();
         }
         else
         {
             // Same as RMB capture: hide mouse + restore camera.
-            VersusGameCursor.TrySetCursorLock(true);
+            if (VersusGameCursor.HasUiManager())
+                VersusGameCursor.TrySetCursorLock(true);
         }
     }
 

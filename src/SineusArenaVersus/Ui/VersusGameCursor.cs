@@ -84,4 +84,19 @@ public static class VersusGameCursor
             // Headless.
         }
     }
+
+    /// <summary>
+    /// True when a UIManager instance is available (match runtime). Tests return false.
+    /// </summary>
+    public static bool HasUiManager()
+    {
+        try
+        {
+            return TryGetUiManager() is not null;
+        }
+        catch
+        {
+            return false;
+        }
+    }
 }
