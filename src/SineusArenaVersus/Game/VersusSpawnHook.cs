@@ -1,23 +1,49 @@
 using System;
+using System.Linq.Expressions;
+using HarmonyLib;
 using UnityEngine;
 
 namespace SineusArenaVersus.Game;
 
 /// <summary>
-/// Bridges BaseLairSpawner spawn callbacks to <see cref="VersusInjectMarker"/>.
+/// Builds <c>Action&lt;Unit&gt;</c> spawn callbacks without a compile-time Unit/Netcode dependency.
 /// </summary>
 public static class VersusSpawnHook
 {
-    public static Action<Unit>? CreateCallback(string label, Color color)
+    public static Delegate? CreateCallback(string label, Color color)
     {
         if (!VersusConfig.ShowInjectSenderLabels.Value && !VersusConfig.ShowInjectSenderLights.Value)
             return null;
 
-        return unit =>
+        var unitType = AccessTools.TypeByName("Unit");
+        if (unitType is null)
+            return null;
+
+        var binder = new MarkerBinder(label, color);
+        var parameter = Expression.Parameter(unitType, "unit");
+        var body = Expression.Call(
+            Expression.Constant(binder),
+            typeof(MarkerBinder).GetMethod(nameof(MarkerBinder.OnSpawned))!,
+            Expression.Convert(parameter, typeof(object)));
+        var actionType = typeof(Action<>).MakeGenericType(unitType);
+        return Expression.Lambda(actionType, body, parameter).Compile();
+    }
+
+    private sealed class MarkerBinder
+    {
+        private readonly string _label;
+        private readonly Color _color;
+
+        public MarkerBinder(string label, Color color)
         {
-            if (unit is null)
-                return;
-            VersusInjectMarker.Attach(((Component)unit).gameObject, label, color);
-        };
+            _label = label;
+            _color = color;
+        }
+
+        public void OnSpawned(object unit)
+        {
+            if (unit is Component component)
+                VersusInjectMarker.Attach(component.gameObject, _label, _color);
+        }
     }
 }

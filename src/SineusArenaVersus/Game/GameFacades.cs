@@ -167,8 +167,8 @@ public static class GameFacades
         if (scheduleMethod is null)
             return false;
 
-        Action<Unit>? onSpawned = marker is { } info
-            ? VersusSpawnHook.CreateCallback(info.Label, info.Color)
+        var spawnCallback = marker is { } markerInfo
+            ? VersusSpawnHook.CreateCallback(markerInfo.Label, markerInfo.Color)
             : null;
 
         foreach (var candidate in UnityEngine.Object.FindObjectsByType(spawnerType))
@@ -185,7 +185,7 @@ public static class GameFacades
             {
                 var angle = Mathf.PI * 2f * index / count;
                 var offset = new Vector3(Mathf.Cos(angle), 0f, Mathf.Sin(angle)) * radius;
-                scheduleMethod.Invoke(candidate, new object?[] { prefab, anchor, offset, onSpawned });
+                scheduleMethod.Invoke(candidate, new object?[] { prefab, anchor, offset, spawnCallback });
             }
 
             return true;
